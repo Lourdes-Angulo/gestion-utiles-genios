@@ -1,0 +1,8 @@
+{
+  "name": "Gestión de Útiles - Genios del Millennium",
+  "description": "Sistema inteligente de gestión y predicción de stock de útiles escolares para la I.E.P. Genios del Millennium, Perú. Control de estudiantes, apoderados, recepciones, stock, movimientos y alertas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
