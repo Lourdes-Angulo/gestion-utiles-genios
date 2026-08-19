@@ -24,7 +24,6 @@ import ViewPrediccion from "./components/ViewPrediccion";
 import ViewAlertas from "./components/ViewAlertas";
 import ViewReportes from "./components/ViewReportes";
 import ViewUsuarios from "./components/ViewUsuarios";
-import ViewConfiguracion from "./components/ViewConfiguracion";
 
 interface MainLayoutProps {
   onLogout: () => void;
@@ -59,8 +58,6 @@ function MainLayout({ onLogout }: MainLayoutProps) {
         return <ViewReportes />;
       case "usuarios":
         return <ViewUsuarios />;
-      case "configuracion":
-        return <ViewConfiguracion />;
       default:
         return <ViewInicio setVistaActiva={setVistaActiva} />;
     }

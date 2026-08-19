@@ -43,8 +43,6 @@ export default function Header({ vistaActiva, setVistaActiva }: HeaderProps) {
         return "Generador de Reportes y Estadísticas";
       case "usuarios":
         return "Perfiles de Usuarios y Permisos de Acceso";
-      case "configuracion":
-        return "Configuración del Sistema Educativo";
       default:
         return "Sistema de Gestión";
     }
@@ -76,8 +74,6 @@ export default function Header({ vistaActiva, setVistaActiva }: HeaderProps) {
         return "Generación, visualización y exportación de documentos oficiales del almacén.";
       case "usuarios":
         return "Roles institucionales con niveles de acceso adaptados para la I.E.P.";
-      case "configuracion":
-        return "Ajustes de datos del plantel, año de gestión, directivos y periodos de entrega.";
       default:
         return "I.E.P. Genios del Millennium";
     }

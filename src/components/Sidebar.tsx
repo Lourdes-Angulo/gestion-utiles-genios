@@ -18,7 +18,6 @@ import {
   Bell,
   FileText,
   UserCheck,
-  Settings,
   Sparkles,
   School,
   LogOut
@@ -48,8 +47,7 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
     { id: "prediccion", label: "Predicción de stock", icon: TrendingUp, isAi: true },
     { id: "alertas", label: "Alertas", icon: Bell, badge: alertasActivasCount, badgeColor: "bg-rose-500" },
     { id: "reportes", label: "Reportes", icon: FileText },
-    { id: "usuarios", label: "Usuarios", icon: UserCheck },
-    { id: "configuracion", label: "Configuración", icon: Settings }
+    { id: "usuarios", label: "Usuarios", icon: UserCheck }
   ];
 
   return (
