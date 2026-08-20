@@ -49,11 +49,15 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
   const totalEstudiantes = estudiantes.length;
   const totalUtiles = utiles.length;
   const stockDisponible = utiles.reduce((sum, u) => sum + u.stockActual, 0);
-  
+
+  // Capacidad de referencia del almacén (ajústala al valor real del colegio).
+  const capacidadStock = 1000;
+  const porcentajeStock = Math.min(100, Math.round((stockDisponible / capacidadStock) * 100));
+
   const utilesBajos = utiles.filter(u => u.stockActual <= u.stockMinimo && u.stockActual > 0).length;
   const utilesSinStock = utiles.filter(u => u.stockActual === 0).length;
   const totalStockBajo = utilesBajos + utilesSinStock;
-  
+
   const recepcionesPendientes = recepciones.filter(r => r.estado === "Pendiente").length;
   const alertasActivas = alertas.filter(a => !a.resuelta).length;
 
@@ -66,43 +70,16 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
   ];
 
   // 3. Chart 2: Útiles recibidos por mes (Bar Chart)
-  // School year starts in March in Peru!
-  const dataRecibidosPorMes = [
-    { mes: "Ene", cantidad: 10 },
-    { mes: "Feb", cantidad: 65 },
-    { mes: "Mar", cantidad: 320 }, // peak of classes starting
-    { mes: "Abr", cantidad: 140 },
-    { mes: "May", cantidad: 85 },
-    { mes: "Jun", cantidad: 50 },
-    { mes: "Jul", cantidad: 25 }
-  ];
+  const dataRecibidosPorMes: { mes: string; cantidad: number }[] = [];
 
   // 4. Chart 3: Productos con mayor consumo
-  const dataMayorConsumo = [
-    { name: "Cuaderno Loro A4", consumo: 145 },
-    { name: "Lapicero Azul FC", consumo: 110 },
-    { name: "Papel Bond A4", consumo: 95 },
-    { name: "Colores FC x12", consumo: 80 },
-    { name: "Goma UHU Barra", consumo: 75 }
-  ];
+  const dataMayorConsumo: { name: string; consumo: number }[] = [];
 
   // 5. Chart 4: Proyección de Demanda (Line Chart)
-  const dataProyeccion = [
-    { name: "Cuaderno Loro", actual: 180, proyectado: 230 },
-    { name: "Lapicero Azul", actual: 320, proyectado: 380 },
-    { name: "Papel Bond A4", actual: 110, proyectado: 140 },
-    { name: "Colores x12", actual: 85, proyectado: 115 },
-    { name: "Goma UHU", actual: 135, proyectado: 160 }
-  ];
+  const dataProyeccion: { name: string; actual: number; proyectado: number }[] = [];
 
   // 6. Chart 5: Evolución de Entradas y Salidas
-  const dataEvolucion = [
-    { mes: "Mar", entradas: 420, salidas: 310 },
-    { mes: "Abr", entradas: 90, salidas: 120 },
-    { mes: "May", entradas: 50, salidas: 85 },
-    { mes: "Jun", entradas: 40, salidas: 65 },
-    { mes: "Jul", entradas: 120, salidas: 95 }
-  ];
+  const dataEvolucion: { mes: string; entradas: number; salidas: number }[] = [];
 
   // Colors for Custom Styling
   const COLORS = ["#10b981", "#f59e0b", "#ef4444"];
@@ -111,7 +88,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
     <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#f0f4f8]">
       {/* 1. KPIs Panel */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
-        
+
         {/* KPI 1: Estudiantes */}
         <div className="glass-card p-5 border-l-4 border-blue-400 hover:border-l-blue-500 transition-all duration-200 flex flex-col justify-between">
           <div className="flex items-center justify-between">
@@ -122,7 +99,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-bold text-slate-800">{totalEstudiantes}</h3>
-            <p className="text-[10px] text-emerald-500 font-medium mt-1">+12 este mes</p>
+            <p className="text-[10px] text-slate-400 font-medium mt-1">Estudiantes registrados</p>
           </div>
         </div>
 
@@ -151,7 +128,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
           <div className="mt-4">
             <h3 className="text-2xl font-bold text-slate-800">{stockDisponible} u.</h3>
             <div className="w-full bg-slate-100 h-1 rounded-full mt-2">
-              <div className="bg-yellow-400 h-1 rounded-full w-[85%]"></div>
+              <div className="bg-yellow-400 h-1 rounded-full transition-all duration-300" style={{ width: `${porcentajeStock}%` }}></div>
             </div>
           </div>
         </div>
@@ -202,7 +179,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
 
       {/* 2. Visual Graphs Section - Bento Grid Layout */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        
+
         {/* Graph 1: Estado actual del stock (Pie Chart) */}
         <div className="glass-card p-6 xl:col-span-4 flex flex-col">
           <div className="flex items-center justify-between mb-4">
@@ -212,7 +189,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
             </div>
             <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold uppercase">Categorías</span>
           </div>
-          
+
           <div className="h-60 flex items-center justify-center relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -229,13 +206,13 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   formatter={(value) => [`${value} útiles`, 'Cantidad']}
                   contentStyle={{ background: "#1e293b", color: "#f8fafc", borderRadius: "8px", fontSize: "12px", border: "none" }}
                 />
               </PieChart>
             </ResponsiveContainer>
-            
+
             {/* Center Summary Label */}
             <div className="absolute flex flex-col items-center">
               <span className="text-2xl font-black text-slate-800">{totalUtiles}</span>
@@ -273,7 +250,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="mes" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 11 }} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 11 }} />
-                <Tooltip 
+                <Tooltip
                   cursor={{ fill: '#f8fafc' }}
                   contentStyle={{ background: "#1e293b", color: "#f8fafc", borderRadius: "8px", fontSize: "12px", border: "none" }}
                 />
@@ -352,12 +329,12 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
               <AreaChart data={dataEvolucion} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#34d399" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#34d399" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorSalidas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#fb7185" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#fb7185" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#fb7185" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#fb7185" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -376,7 +353,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
 
       {/* 4. Bottom Row: Activities & Quick Accesses */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* Recent Activities */}
         <div className="glass-card p-6 lg:col-span-8 flex flex-col">
           <div className="flex items-center justify-between mb-4">
@@ -384,7 +361,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
               <h4 className="font-bold text-slate-800 text-sm">Actividades Recientes de Inventario</h4>
               <p className="text-[11px] text-slate-400 mt-0.5 font-medium">Últimas transacciones y registros en el almacén</p>
             </div>
-            <button 
+            <button
               onClick={() => setVistaActiva("movimientos")}
               className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5 hover:underline"
             >
@@ -396,11 +373,10 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
             {movimientos.slice(0, 4).map((mov, i) => (
               <div key={i} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-colors duration-200">
                 <div className="flex items-center gap-3.5">
-                  <div className={`p-2 rounded-xl border ${
-                    mov.tipo === "Entrada" 
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                  <div className={`p-2 rounded-xl border ${mov.tipo === "Entrada"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
                       : "bg-rose-50 text-rose-700 border-rose-100"
-                  }`}>
+                    }`}>
                     <PackageCheck className="w-4 h-4" />
                   </div>
                   <div>
@@ -415,9 +391,8 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className={`text-xs font-black block ${
-                    mov.tipo === "Entrada" ? "text-emerald-600" : "text-rose-600"
-                  }`}>
+                  <span className={`text-xs font-black block ${mov.tipo === "Entrada" ? "text-emerald-600" : "text-rose-600"
+                    }`}>
                     {mov.tipo === "Entrada" ? "+" : "-"}{mov.cantidad}
                   </span>
                   <span className="text-[9px] text-slate-400 font-mono mt-0.5 block">{mov.fecha}</span>
