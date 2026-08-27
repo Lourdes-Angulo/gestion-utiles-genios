@@ -92,17 +92,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     director: "Dra. Marisol Vargas Diaz"
   });
 
-  // Al iniciar la app, carga los útiles desde Supabase (base de datos real)
+    // Al iniciar la app, carga los datos desde Supabase (base de datos real)
   useEffect(() => {
-    const cargarUtiles = async () => {
-      const { data, error } = await supabase.from("utiles").select("*").order("id");
-      if (error) {
-        console.error("Error cargando útiles desde Supabase:", error.message);
-        return;
+    const cargarDatos = async () => {
+      // Útiles
+      const { data: utilesData, error: utilesError } = await supabase.from("utiles").select("*").order("id");
+      if (utilesError) {
+        console.error("Error cargando útiles desde Supabase:", utilesError.message);
+      } else if (utilesData) {
+        setUtiles(utilesData as UtilEscolar[]);
       }
-      if (data) setUtiles(data as UtilEscolar[]);
+
+      // Apoderados
+      const { data: apoderadosData, error: apoderadosError } = await supabase.from("apoderados").select("*").order("id");
+      if (apoderadosError) {
+        console.error("Error cargando apoderados desde Supabase:", apoderadosError.message);
+      } else if (apoderadosData) {
+        setApoderados(apoderadosData as Apoderado[]);
+      }
     };
-    cargarUtiles();
+    cargarDatos();
   }, []);
 
   const cambiarUsuarioActivo = (id: string) => {
@@ -188,16 +197,33 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setEstudiantes(prev => prev.map(e => e.id === id ? { ...e, estado: e.estado === "Activo" ? "Inactivo" : "Activo" } : e));
   };
 
-  const registrarApoderado = (apod: Omit<Apoderado, "id">) => {
+    const registrarApoderado = async (apod: Omit<Apoderado, "id">) => {
     const nuevoId = `A${String(apoderados.length + 1).padStart(3, "0")}`;
     const nuevoApod: Apoderado = {
       ...apod,
       id: nuevoId
     };
+
+    // Guarda el nuevo apoderado en Supabase
+    const { error } = await supabase.from("apoderados").insert(nuevoApod);
+    if (error) {
+      console.error("Error registrando apoderado:", error.message);
+      alert("No se pudo guardar el apoderado en la base de datos: " + error.message);
+      return;
+    }
+
     setApoderados(prev => [...prev, nuevoApod]);
   };
 
-  const editarApoderado = (apod: Apoderado) => {
+  const editarApoderado = async (apod: Apoderado) => {
+    // Actualiza el apoderado en Supabase
+    const { error } = await supabase.from("apoderados").update(apod).eq("id", apod.id);
+    if (error) {
+      console.error("Error editando apoderado:", error.message);
+      alert("No se pudo actualizar el apoderado en la base de datos: " + error.message);
+      return;
+    }
+
     setApoderados(prev => prev.map(a => a.id === apod.id ? apod : a));
     // Sync with students
     setEstudiantes(prev => prev.map(e => {
