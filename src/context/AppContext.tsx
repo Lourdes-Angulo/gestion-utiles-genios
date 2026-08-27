@@ -103,12 +103,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setUtiles(utilesData as UtilEscolar[]);
       }
 
-      // Apoderados
+            // Apoderados
       const { data: apoderadosData, error: apoderadosError } = await supabase.from("apoderados").select("*").order("id");
       if (apoderadosError) {
         console.error("Error cargando apoderados desde Supabase:", apoderadosError.message);
       } else if (apoderadosData) {
         setApoderados(apoderadosData as Apoderado[]);
+      }
+
+      // Estudiantes
+      const { data: estudiantesData, error: estudiantesError } = await supabase.from("estudiantes").select("*").order("id");
+      if (estudiantesError) {
+        console.error("Error cargando estudiantes desde Supabase:", estudiantesError.message);
+      } else if (estudiantesData) {
+        setEstudiantes(estudiantesData as Estudiante[]);
       }
     };
     cargarDatos();
@@ -119,7 +127,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (user) setUsuarioActivo(user);
   };
 
-  const registrarEstudiante = (est: Omit<Estudiante, "id" | "codigo">) => {
+    const registrarEstudiante = async (est: Omit<Estudiante, "id" | "codigo">) => {
     const nuevoId = `E${String(estudiantes.length + 1).padStart(3, "0")}`;
     const nuevoCodigo = `EST-2026-${String(estudiantes.length + 1).padStart(3, "0")}`;
     const nuevoEst: Estudiante = {
@@ -128,22 +136,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       codigo: nuevoCodigo
     };
 
-    // Add to students list
+    // 1. Guarda el estudiante en Supabase
+    const { error } = await supabase.from("estudiantes").insert(nuevoEst);
+    if (error) {
+      console.error("Error registrando estudiante:", error.message);
+      alert("No se pudo guardar el estudiante en la base de datos: " + error.message);
+      return;
+    }
     setEstudiantes(prev => [...prev, nuevoEst]);
 
-    // Link to guardian
-    setApoderados(prev => prev.map(ap => {
-      if (ap.id === est.apoderadoId) {
-        return {
-          ...ap,
-          estudiantesIds: [...ap.estudiantesIds, nuevoId],
-          estudiantesNombres: [...ap.estudiantesNombres, `${est.nombres} ${est.apellidos}`]
-        };
+    // 2. Vincula el estudiante a su apoderado (actualiza también en Supabase)
+    const guardian = apoderados.find(ap => ap.id === est.apoderadoId);
+    if (guardian) {
+      const nuevosIds = [...guardian.estudiantesIds, nuevoId];
+      const nuevosNombres = [...guardian.estudiantesNombres, `${est.nombres} ${est.apellidos}`];
+      const { error: gErr } = await supabase.from("apoderados")
+        .update({ estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres })
+        .eq("id", guardian.id);
+      if (gErr) {
+        console.error("Error vinculando estudiante al apoderado:", gErr.message);
       }
-      return ap;
-    }));
+      setApoderados(prev => prev.map(ap => ap.id === guardian.id
+        ? { ...ap, estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres }
+        : ap));
+    }
 
-    // Generate pending reception for the student if list exists
+    // 3. Genera recepción pendiente si existe lista para el grado (por ahora en memoria)
     const listaGrado = listas.find(l => l.grado === est.grado);
     if (listaGrado) {
       const nuevaRecepcion: Recepcion = {
@@ -168,62 +186,64 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const editarEstudiante = (est: Estudiante) => {
+  const editarEstudiante = async (est: Estudiante) => {
+    // 1. Actualiza el estudiante en Supabase
+    const { error } = await supabase.from("estudiantes").update(est).eq("id", est.id);
+    if (error) {
+      console.error("Error editando estudiante:", error.message);
+      alert("No se pudo actualizar el estudiante en la base de datos: " + error.message);
+      return;
+    }
     setEstudiantes(prev => prev.map(e => e.id === est.id ? est : e));
-    // Update guardian cache if changed
-    setApoderados(prev => prev.map(ap => {
-      if (ap.id === est.apoderadoId) {
-        const index = ap.estudiantesIds.indexOf(est.id);
-        if (index === -1) {
-          return {
-            ...ap,
-            estudiantesIds: [...ap.estudiantesIds, est.id],
-            estudiantesNombres: [...ap.estudiantesNombres, `${est.nombres} ${est.apellidos}`]
-          };
-        } else {
-          const updatedNombres = [...ap.estudiantesNombres];
-          updatedNombres[index] = `${est.nombres} ${est.apellidos}`;
-          return {
-            ...ap,
-            estudiantesNombres: updatedNombres
-          };
-        }
+
+    // 2. Actualiza el vínculo con el apoderado (también en Supabase)
+    const guardian = apoderados.find(ap => ap.id === est.apoderadoId);
+    if (guardian) {
+      const index = guardian.estudiantesIds.indexOf(est.id);
+      let nuevosIds = guardian.estudiantesIds;
+      let nuevosNombres = [...guardian.estudiantesNombres];
+      if (index === -1) {
+        nuevosIds = [...guardian.estudiantesIds, est.id];
+        nuevosNombres = [...guardian.estudiantesNombres, `${est.nombres} ${est.apellidos}`];
+      } else {
+        nuevosNombres[index] = `${est.nombres} ${est.apellidos}`;
       }
-      return ap;
-    }));
+      const { error: gErr } = await supabase.from("apoderados")
+        .update({ estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres })
+        .eq("id", guardian.id);
+      if (gErr) {
+        console.error("Error actualizando apoderado vinculado:", gErr.message);
+      }
+      setApoderados(prev => prev.map(ap => ap.id === guardian.id
+        ? { ...ap, estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres }
+        : ap));
+    }
   };
 
-  const desactivarEstudiante = (id: string) => {
-    setEstudiantes(prev => prev.map(e => e.id === id ? { ...e, estado: e.estado === "Activo" ? "Inactivo" : "Activo" } : e));
+  const desactivarEstudiante = async (id: string) => {
+    const target = estudiantes.find(e => e.id === id);
+    if (!target) return;
+    const nuevoEstado = target.estado === "Activo" ? "Inactivo" : "Activo";
+
+    const { error } = await supabase.from("estudiantes").update({ estado: nuevoEstado }).eq("id", id);
+    if (error) {
+      console.error("Error cambiando estado del estudiante:", error.message);
+      alert("No se pudo cambiar el estado del estudiante: " + error.message);
+      return;
+    }
+    setEstudiantes(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
   };
 
-    const registrarApoderado = async (apod: Omit<Apoderado, "id">) => {
+  const registrarApoderado = (apod: Omit<Apoderado, "id">) => {
     const nuevoId = `A${String(apoderados.length + 1).padStart(3, "0")}`;
     const nuevoApod: Apoderado = {
       ...apod,
       id: nuevoId
     };
-
-    // Guarda el nuevo apoderado en Supabase
-    const { error } = await supabase.from("apoderados").insert(nuevoApod);
-    if (error) {
-      console.error("Error registrando apoderado:", error.message);
-      alert("No se pudo guardar el apoderado en la base de datos: " + error.message);
-      return;
-    }
-
     setApoderados(prev => [...prev, nuevoApod]);
   };
 
-  const editarApoderado = async (apod: Apoderado) => {
-    // Actualiza el apoderado en Supabase
-    const { error } = await supabase.from("apoderados").update(apod).eq("id", apod.id);
-    if (error) {
-      console.error("Error editando apoderado:", error.message);
-      alert("No se pudo actualizar el apoderado en la base de datos: " + error.message);
-      return;
-    }
-
+  const editarApoderado = (apod: Apoderado) => {
     setApoderados(prev => prev.map(a => a.id === apod.id ? apod : a));
     // Sync with students
     setEstudiantes(prev => prev.map(e => {
