@@ -5,6 +5,7 @@
 
 import React, { useState } from "react";
 import { AppProvider } from "./context/AppContext";
+import { supabase } from "./lib/supabaseClient";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 
@@ -94,7 +95,10 @@ export default function App() {
     setSesionIniciada(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Cierra la sesión en Supabase
+    await supabase.auth.signOut();
+
     if (typeof window !== "undefined") {
       localStorage.removeItem("sesion_colegio_iniciada");
       localStorage.removeItem("sesion_colegio_usuario_id");
