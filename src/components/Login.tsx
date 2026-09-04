@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
+import { supabase } from "../lib/supabaseClient";
 import InsigniaColegio from "./InsigniaColegio";
-import { LogIn, Mail, Lock, AlertCircle, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { LogIn, Mail, Lock, AlertCircle, Eye, EyeOff, ShieldCheck, CheckCircle2 } from "lucide-react";
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -12,13 +13,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [correo, setCorreo] = useState("");
   const [contrasenia, setContrasenia] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [infoMsg, setInfoMsg] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [cargando, setCargando] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-    
+    setInfoMsg("");
+
     const emailLower = correo.trim().toLowerCase();
     const pass = contrasenia.trim();
 
@@ -29,57 +32,58 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
     setCargando(true);
 
-    // Validate requested credentials
-    setTimeout(() => {
-      let matchedUserId = "";
-      let valid = false;
+    // Supabase valida el correo y la contraseña de verdad
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailLower,
+      password: pass
+    });
 
-      if (emailLower === "admin1@ejemplo.com" && (pass === "admin1" || pass === "admin")) {
-        matchedUserId = "U_ADMIN";
-        valid = true;
-      } else if (emailLower === "secretaria@ejemplo.com" && pass === "secretaria123") {
-        matchedUserId = "U_SECRETARIA";
-        valid = true;
-      } else {
-        const foundUser = usuarios.find(u => u.correo.toLowerCase() === emailLower);
-        if (foundUser) {
-          matchedUserId = foundUser.id;
-          valid = true;
-        }
-      }
-
-      if (valid && matchedUserId) {
-        cambiarUsuarioActivo(matchedUserId);
-        // Persist login state
-        localStorage.setItem("sesion_colegio_iniciada", "true");
-        localStorage.setItem("sesion_colegio_usuario_id", matchedUserId);
-        onLoginSuccess();
-      } else {
-        setErrorMsg("Correo o contraseña incorrectos. Por favor, intente de nuevo.");
-      }
+    if (error) {
+      setErrorMsg("Correo o contraseña incorrectos. Por favor, intente de nuevo.");
       setCargando(false);
-    }, 800);
+      return;
+    }
+
+    // Busca el perfil (nombre, rol, permisos) que coincide con ese correo
+    const perfil = usuarios.find(u => u.correo.toLowerCase() === emailLower);
+    if (perfil) {
+      cambiarUsuarioActivo(perfil.id);
+      localStorage.setItem("sesion_colegio_usuario_id", perfil.id);
+    }
+
+    localStorage.setItem("sesion_colegio_iniciada", "true");
+    setCargando(false);
+    onLoginSuccess();
   };
 
-  // Helper to fill credentials for testing convenience
-  const handleQuickFill = (email: string, pass: string) => {
-    setCorreo(email);
-    setContrasenia(pass);
+  const handleForgotPassword = async () => {
     setErrorMsg("");
+    setInfoMsg("");
+    const emailLower = correo.trim().toLowerCase();
+    if (!emailLower) {
+      setErrorMsg('Escribe tu correo arriba y luego pulsa "¿Olvidaste tu contraseña?".');
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(emailLower);
+    if (error) {
+      setErrorMsg("No se pudo enviar el correo de recuperación: " + error.message);
+      return;
+    }
+    setInfoMsg("Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.");
   };
 
   return (
     <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-[#f0f4f8] p-4 font-sans select-none antialiased">
       <div className="w-full max-w-md bg-white rounded-3xl border border-slate-150 shadow-xl overflow-hidden flex flex-col relative z-10 transition-all duration-300">
-        
+
         {/* Decorative Top Accent Bar */}
         <div className="h-2 bg-emerald-600 w-full" />
-        
+
         <div className="p-8 flex flex-col items-center">
-          
+
           {/* Logo insignia */}
           <InsigniaColegio size={130} className="mb-4" />
-          
+
           {/* App Name Header */}
           <div className="text-center mb-6">
             <h2 className="text-xl font-black text-slate-800 tracking-tight">
@@ -95,6 +99,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             <div className="w-full bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-2xl flex items-center gap-3 mb-5 animate-fade-in text-xs font-semibold">
               <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
               <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Info Alert (recuperación de contraseña) */}
+          {infoMsg && (
+            <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-800 p-3.5 rounded-2xl flex items-center gap-3 mb-5 animate-fade-in text-xs font-semibold">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{infoMsg}</span>
             </div>
           )}
 
@@ -158,13 +170,23 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 </>
               )}
             </button>
+
+            {/* Forgot password link */}
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={cargando}
+                className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
           </form>
-
-
 
         </div>
       </div>
-      
+
       {/* Decorative Brand Subtitle */}
       <p className="text-[10px] text-slate-400 font-bold uppercase mt-4 tracking-widest flex items-center gap-1">
         <ShieldCheck className="w-4 h-4 text-emerald-600" />

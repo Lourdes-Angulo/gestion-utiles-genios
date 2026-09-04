@@ -92,7 +92,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     director: "Dra. Marisol Vargas Diaz"
   });
 
-    // Al iniciar la app, carga los datos desde Supabase (base de datos real)
+  // Al iniciar la app, carga los datos desde Supabase (base de datos real)
   useEffect(() => {
     const cargarDatos = async () => {
       // Útiles
@@ -103,7 +103,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setUtiles(utilesData as UtilEscolar[]);
       }
 
-            // Apoderados
+      // Apoderados
       const { data: apoderadosData, error: apoderadosError } = await supabase.from("apoderados").select("*").order("id");
       if (apoderadosError) {
         console.error("Error cargando apoderados desde Supabase:", apoderadosError.message);
@@ -118,6 +118,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (estudiantesData) {
         setEstudiantes(estudiantesData as Estudiante[]);
       }
+
+      // Usuarios (perfiles: nombre, rol, permisos)
+      const { data: usuariosData, error: usuariosError } = await supabase.from("usuarios").select("*").order("id");
+      if (usuariosError) {
+        console.error("Error cargando usuarios desde Supabase:", usuariosError.message);
+      } else if (usuariosData) {
+        setUsuarios(usuariosData as Usuario[]);
+      }
     };
     cargarDatos();
   }, []);
@@ -127,7 +135,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (user) setUsuarioActivo(user);
   };
 
-    const registrarEstudiante = async (est: Omit<Estudiante, "id" | "codigo">) => {
+  const registrarEstudiante = async (est: Omit<Estudiante, "id" | "codigo">) => {
     const nuevoId = `E${String(estudiantes.length + 1).padStart(3, "0")}`;
     const nuevoCodigo = `EST-2026-${String(estudiantes.length + 1).padStart(3, "0")}`;
     const nuevoEst: Estudiante = {
