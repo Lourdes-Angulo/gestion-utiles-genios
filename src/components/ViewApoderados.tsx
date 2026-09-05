@@ -13,9 +13,7 @@ import {
   Users,
   Check,
   X,
-  Mail,
   Phone,
-  MapPin,
   FileText
 } from "lucide-react";
 
@@ -37,8 +35,6 @@ export default function ViewApoderados() {
   const [formNombres, setFormNombres] = useState("");
   const [formApellidos, setFormApellidos] = useState("");
   const [formTelefono, setFormTelefono] = useState("");
-  const [formCorreo, setFormCorreo] = useState("");
-  const [formDireccion, setFormDireccion] = useState("");
 
   const [mensajeExito, setMensajeExito] = useState("");
 
@@ -49,8 +45,6 @@ export default function ViewApoderados() {
     setFormNombres("");
     setFormApellidos("");
     setFormTelefono("");
-    setFormCorreo("");
-    setFormDireccion("");
     setMostrarModalRegistro(true);
   };
 
@@ -60,8 +54,6 @@ export default function ViewApoderados() {
     setFormNombres(apod.nombres);
     setFormApellidos(apod.apellidos);
     setFormTelefono(apod.telefono);
-    setFormCorreo(apod.correo);
-    setFormDireccion(apod.direccion);
     setMostrarModalRegistro(true);
   };
 
@@ -74,9 +66,7 @@ export default function ViewApoderados() {
         ...apoderadoSeleccionado,
         nombres: formNombres,
         apellidos: formApellidos,
-        telefono: formTelefono,
-        correo: formCorreo,
-        direccion: formDireccion
+        telefono: formTelefono
       });
       setMensajeExito("Datos del apoderado actualizados con éxito.");
     } else {
@@ -84,8 +74,6 @@ export default function ViewApoderados() {
         nombres: formNombres,
         apellidos: formApellidos,
         telefono: formTelefono,
-        correo: formCorreo,
-        direccion: formDireccion,
         estudiantesIds: [],
         estudiantesNombres: []
       });
@@ -100,8 +88,7 @@ export default function ViewApoderados() {
     const term = filtroBusqueda.toLowerCase();
     return (
       `${ap.nombres} ${ap.apellidos}`.toLowerCase().includes(term) ||
-      ap.telefono.includes(term) ||
-      ap.correo.toLowerCase().includes(term)
+      ap.telefono.includes(term)
     );
   });
 
@@ -121,7 +108,7 @@ export default function ViewApoderados() {
           <Search className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por nombre, teléfono o correo..."
+            placeholder="Buscar por nombre o teléfono..."
             value={filtroBusqueda}
             onChange={(e) => setFiltroBusqueda(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all duration-200"
@@ -176,14 +163,6 @@ export default function ViewApoderados() {
                   <div className="flex items-center gap-2.5">
                     <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>{apod.telefono}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Mail className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="truncate">{apod.correo}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="truncate" title={apod.direccion}>{apod.direccion}</span>
                   </div>
                 </div>
               </div>
@@ -263,42 +242,17 @@ export default function ViewApoderados() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Teléfono Celular</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={9}
-                    pattern="9\d{8}"
-                    value={formTelefono}
-                    onChange={(e) => setFormTelefono(e.target.value.replace(/\D/g, ""))}
-                    placeholder="Ej. 987654321"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Correo Electrónico</label>
-                  <input
-                    type="email"
-                    required
-                    value={formCorreo}
-                    onChange={(e) => setFormCorreo(e.target.value)}
-                    placeholder="correo@ejemplo.com"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Dirección del Domicilio</label>
+                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Teléfono Celular</label>
                 <input
                   type="text"
                   required
-                  value={formDireccion}
-                  onChange={(e) => setFormDireccion(e.target.value)}
-                  placeholder="Ej. Av. Las Flores 450, San Juan de Lurigancho, Lima"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  maxLength={9}
+                  pattern="9\d{8}"
+                  value={formTelefono}
+                  onChange={(e) => setFormTelefono(e.target.value.replace(/\D/g, ""))}
+                  placeholder="Ej. 987654321"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white font-mono"
                 />
               </div>
 

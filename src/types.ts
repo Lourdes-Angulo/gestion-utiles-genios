@@ -21,10 +21,7 @@ export interface Apoderado {
   id: string;
   nombres: string;
   apellidos: string;
-  dni?: string;
   telefono: string;
-  correo: string;
-  direccion: string;
   estudiantesIds: string[];
   estudiantesNombres: string[];
 }
