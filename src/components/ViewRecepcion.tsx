@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { Recepcion } from "../types";
 import {
@@ -37,7 +37,7 @@ export default function ViewRecepcion() {
 
   const [filtroBusqueda, setFiltroBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
-  
+
   const [recepcionSeleccionada, setRecepcionSeleccionada] = useState<Recepcion | null>(null);
   const [mostrarModalRegistrar, setMostrarModalRegistrar] = useState(false);
   const [mostrarConstancia, setMostrarConstancia] = useState(false);
@@ -116,7 +116,7 @@ export default function ViewRecepcion() {
 
     registrarNuevaRecepcion(nueva);
     setMostrarModalNuevaRecepcion(false);
-    
+
     // Auto-select the newly created reception sheet
     // Give it a tiny delay to allow state update
     setTimeout(() => {
@@ -157,10 +157,14 @@ export default function ViewRecepcion() {
     );
 
     setMostrarModalRegistrar(false);
-    // Auto-re-select updated reception to show changes
-    const updated = recepciones.find(r => r.id === recepcionSeleccionada.id);
-    if (updated) setRecepcionSeleccionada(updated);
   };
+
+  // Mantiene el panel derecho sincronizado con los datos actualizados
+  useEffect(() => {
+    if (!recepcionSeleccionada) return;
+    const fresca = recepciones.find(r => r.id === recepcionSeleccionada.id);
+    if (fresca) setRecepcionSeleccionada(fresca);
+  }, [recepciones]);
 
   const handleCantidadChange = (utilId: string, val: number, max: number) => {
     setCantidadesEntregadas(prev => ({
@@ -183,7 +187,7 @@ export default function ViewRecepcion() {
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
-      
+
       {/* Control Panel */}
       <div className="glass-card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
@@ -230,11 +234,11 @@ export default function ViewRecepcion() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        
+
         {/* Left: Enrolled Students & Delivery Progress */}
         <div className="xl:col-span-6 space-y-3">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2">Historial de Recepciones</span>
-          
+
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
             {recepcionesFiltradas.length > 0 ? (
               recepcionesFiltradas.map((rc) => {
@@ -246,20 +250,18 @@ export default function ViewRecepcion() {
                   <div
                     key={rc.id}
                     onClick={() => setRecepcionSeleccionada(rc)}
-                    className={`p-4.5 rounded-3xl border transition-all duration-150 cursor-pointer text-xs font-semibold flex items-center justify-between ${
-                      recepcionSeleccionada?.id === rc.id
+                    className={`p-4.5 rounded-3xl border transition-all duration-150 cursor-pointer text-xs font-semibold flex items-center justify-between ${recepcionSeleccionada?.id === rc.id
                         ? "bg-emerald-50 border-emerald-300 shadow-xs"
                         : "glass-card hover:bg-slate-50/50"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start gap-3.5">
-                      <div className={`p-2 rounded-xl mt-0.5 border ${
-                        rc.estado === "Completo"
+                      <div className={`p-2 rounded-xl mt-0.5 border ${rc.estado === "Completo"
                           ? "bg-emerald-50 text-emerald-700 border-emerald-100"
                           : rc.estado === "Incompleto"
-                          ? "bg-amber-50 text-amber-700 border-amber-100"
-                          : "bg-slate-50 text-slate-500 border-slate-100"
-                      }`}>
+                            ? "bg-amber-50 text-amber-700 border-amber-100"
+                            : "bg-slate-50 text-slate-500 border-slate-100"
+                        }`}>
                         {rc.estado === "Completo" ? (
                           <CheckCircle2 className="w-5 h-5" />
                         ) : rc.estado === "Incompleto" ? (
@@ -272,7 +274,7 @@ export default function ViewRecepcion() {
                       <div>
                         <h4 className="font-bold text-slate-800 text-xs">{rc.estudianteNombre}</h4>
                         <p className="text-[10px] text-slate-400 mt-0.5">Apoderado: {rc.apoderadoNombre}</p>
-                        
+
                         <div className="flex items-center gap-2 mt-2">
                           <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
                             {rc.grado}
@@ -285,13 +287,12 @@ export default function ViewRecepcion() {
                     </div>
 
                     <div className="text-right flex flex-col items-end shrink-0 pl-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                        rc.estado === "Completo"
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${rc.estado === "Completo"
                           ? "bg-emerald-100 text-emerald-800"
                           : rc.estado === "Incompleto"
-                          ? "bg-amber-100 text-amber-800 animate-pulse"
-                          : "bg-slate-100 text-slate-500"
-                      }`}>
+                            ? "bg-amber-100 text-amber-800 animate-pulse"
+                            : "bg-slate-100 text-slate-500"
+                        }`}>
                         {rc.estado}
                       </span>
                       <span className="text-[9px] text-slate-400 mt-2 font-mono">{rc.fechaRecepcion}</span>
@@ -311,7 +312,7 @@ export default function ViewRecepcion() {
         <div className="xl:col-span-6">
           {recepcionSeleccionada ? (
             <div className="glass-card overflow-hidden flex flex-col justify-between">
-              
+
               {/* Header card */}
               <div className="p-6 bg-slate-50 border-b border-slate-150">
                 <div className="flex items-start justify-between">
@@ -325,13 +326,12 @@ export default function ViewRecepcion() {
                     <p className="text-[10px] text-slate-400 mt-0.5 font-bold">Grado: {recepcionSeleccionada.grado} ({recepcionSeleccionada.nivel})</p>
                   </div>
 
-                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
-                    recepcionSeleccionada.estado === "Completo"
+                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${recepcionSeleccionada.estado === "Completo"
                       ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
                       : recepcionSeleccionada.estado === "Incompleto"
-                      ? "bg-amber-100 text-amber-800 border border-amber-200 animate-pulse"
-                      : "bg-slate-100 text-slate-500 border border-slate-200"
-                  }`}>
+                        ? "bg-amber-100 text-amber-800 border border-amber-200 animate-pulse"
+                        : "bg-slate-100 text-slate-500 border border-slate-200"
+                    }`}>
                     {recepcionSeleccionada.estado}
                   </span>
                 </div>
@@ -356,7 +356,7 @@ export default function ViewRecepcion() {
 
                 <div className="space-y-3">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Listado de Materiales</span>
-                  
+
                   <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                     {recepcionSeleccionada.items.map((item, idx) => {
                       const faltante = item.cantidadEsperada - item.cantidadEntregada;
@@ -497,7 +497,7 @@ export default function ViewRecepcion() {
       {mostrarConstancia && recepcionSeleccionada && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-150 max-w-xl w-full overflow-hidden animate-scale-up">
-            
+
             {/* Header control */}
             <div className="p-4 bg-slate-50 border-b border-slate-150 flex items-center justify-between no-print">
               <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -646,7 +646,7 @@ export default function ViewRecepcion() {
             </div>
 
             <form onSubmit={handleGuardarNuevaRecepcion} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs font-semibold">
-              
+
               {/* Student Selector */}
               <div className="space-y-1.5">
                 <label className="block text-slate-500 uppercase tracking-wide">Seleccionar Estudiante</label>
@@ -671,7 +671,7 @@ export default function ViewRecepcion() {
               {nuevoRecepEstudianteId && (() => {
                 const student = estudiantes.find(e => e.id === nuevoRecepEstudianteId);
                 if (!student) return null;
-                
+
                 const lista = listas.find(l => l.grado === student.grado);
 
                 return (
