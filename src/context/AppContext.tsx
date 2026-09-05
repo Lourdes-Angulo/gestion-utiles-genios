@@ -134,6 +134,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (listasData) {
         setListas(listasData as ListaUtil[]);
       }
+
+      // Movimientos
+      const { data: movimientosData, error: movimientosError } = await supabase.from("movimientos").select("*").order("id", { ascending: false });
+      if (movimientosError) {
+        console.error("Error cargando movimientos desde Supabase:", movimientosError.message);
+      } else if (movimientosData) {
+        setMovimientos(movimientosData as Movimiento[]);
+      }
     };
     cargarDatos();
   }, []);
@@ -365,7 +373,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setUtiles(prev => prev.map(u => u.id === id ? { ...u, estado: nuevoEstado } : u));
   };
 
-    const guardarListaUtil = async (lista: ListaUtil) => {
+  const guardarListaUtil = async (lista: ListaUtil) => {
     const existe = listas.find(l => l.grado === lista.grado && l.nivel === lista.nivel);
     if (existe) {
       // Ya hay una lista para ese grado/nivel: la actualizamos
@@ -477,21 +485,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setRecepciones(prev => [nuevaRecep, ...prev]);
   };
 
-  const registrarNuevoMovimiento = (mov: Omit<Movimiento, "id" | "fecha">) => {
+  const registrarNuevoMovimiento = async (mov: Omit<Movimiento, "id" | "fecha">) => {
     const hoyStr = new Date().toISOString().split("T")[0];
     const horaStr = new Date().toTimeString().split(" ")[0].substring(0, 5);
     const nuevoId = `M${String(movimientos.length + 1).padStart(3, "0")}`;
-
-    // Update supply stock
-    setUtiles(prev => prev.map(u => {
-      if (u.id === mov.utilId) {
-        return {
-          ...u,
-          stockActual: mov.stockResultante
-        };
-      }
-      return u;
-    }));
 
     const nuevoMov: Movimiento = {
       ...mov,
@@ -499,7 +496,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       fecha: `${hoyStr} ${horaStr}`
     };
 
+    // 1. Guarda el movimiento en Supabase
+    const { error } = await supabase.from("movimientos").insert(nuevoMov);
+    if (error) {
+      console.error("Error registrando movimiento:", error.message);
+      alert("No se pudo guardar el movimiento en la base de datos: " + error.message);
+      return;
+    }
     setMovimientos(prev => [nuevoMov, ...prev]);
+
+    // 2. Actualiza el stock del útil afectado (también en Supabase)
+    const { error: uErr } = await supabase.from("utiles")
+      .update({ stockActual: mov.stockResultante })
+      .eq("id", mov.utilId);
+    if (uErr) {
+      console.error("Error actualizando stock del útil:", uErr.message);
+    }
+    setUtiles(prev => prev.map(u => u.id === mov.utilId
+      ? { ...u, stockActual: mov.stockResultante }
+      : u));
   };
 
   const resolverAlerta = (alertaId: string) => {
