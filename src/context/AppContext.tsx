@@ -126,6 +126,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (usuariosData) {
         setUsuarios(usuariosData as Usuario[]);
       }
+
+      // Listas de útiles
+      const { data: listasData, error: listasError } = await supabase.from("listas_utiles").select("*").order("id");
+      if (listasError) {
+        console.error("Error cargando listas desde Supabase:", listasError.message);
+      } else if (listasData) {
+        setListas(listasData as ListaUtil[]);
+      }
     };
     cargarDatos();
   }, []);
@@ -357,17 +365,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setUtiles(prev => prev.map(u => u.id === id ? { ...u, estado: nuevoEstado } : u));
   };
 
-  const guardarListaUtil = (lista: ListaUtil) => {
+    const guardarListaUtil = async (lista: ListaUtil) => {
     const existe = listas.find(l => l.grado === lista.grado && l.nivel === lista.nivel);
     if (existe) {
-      setListas(prev => prev.map(l => l.id === existe.id ? { ...lista, id: existe.id } : l));
+      // Ya hay una lista para ese grado/nivel: la actualizamos
+      const actualizada = { ...lista, id: existe.id };
+      const { error } = await supabase.from("listas_utiles").update(actualizada).eq("id", existe.id);
+      if (error) {
+        console.error("Error actualizando lista:", error.message);
+        alert("No se pudo actualizar la lista en la base de datos: " + error.message);
+        return;
+      }
+      setListas(prev => prev.map(l => l.id === existe.id ? actualizada : l));
     } else {
+      // Lista nueva
       const nuevoId = `L${String(listas.length + 1).padStart(3, "0")}`;
-      setListas(prev => [...prev, { ...lista, id: nuevoId }]);
+      const nueva = { ...lista, id: nuevoId };
+      const { error } = await supabase.from("listas_utiles").insert(nueva);
+      if (error) {
+        console.error("Error guardando lista:", error.message);
+        alert("No se pudo guardar la lista en la base de datos: " + error.message);
+        return;
+      }
+      setListas(prev => [...prev, nueva]);
     }
   };
 
-  const eliminarListaUtil = (id: string) => {
+  const eliminarListaUtil = async (id: string) => {
+    const { error } = await supabase.from("listas_utiles").delete().eq("id", id);
+    if (error) {
+      console.error("Error eliminando lista:", error.message);
+      alert("No se pudo eliminar la lista de la base de datos: " + error.message);
+      return;
+    }
     setListas(prev => prev.filter(l => l.id !== id));
   };
 
