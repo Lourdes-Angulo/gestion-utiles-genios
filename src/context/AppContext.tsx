@@ -142,6 +142,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (movimientosData) {
         setMovimientos(movimientosData as Movimiento[]);
       }
+
+      // Alertas
+      const { data: alertasData, error: alertasError } = await supabase.from("alertas").select("*").order("id", { ascending: false });
+      if (alertasError) {
+        console.error("Error cargando alertas desde Supabase:", alertasError.message);
+      } else if (alertasData) {
+        setAlertas(alertasData as Alerta[]);
+      }
     };
     cargarDatos();
   }, []);
@@ -517,11 +525,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       : u));
   };
 
-  const resolverAlerta = (alertaId: string) => {
+  const resolverAlerta = async (alertaId: string) => {
+    const { error } = await supabase.from("alertas").update({ resuelta: true }).eq("id", alertaId);
+    if (error) {
+      console.error("Error resolviendo alerta:", error.message);
+      alert("No se pudo actualizar la alerta: " + error.message);
+      return;
+    }
     setAlertas(prev => prev.map(al => al.id === alertaId ? { ...al, resuelta: true } : al));
   };
 
-  const crearAlerta = (al: Omit<Alerta, "id" | "fecha" | "resuelta">) => {
+  const crearAlerta = async (al: Omit<Alerta, "id" | "fecha" | "resuelta">) => {
     const hoyStr = new Date().toISOString().split("T")[0];
     const nuevoId = `AL${String(alertas.length + 1).padStart(3, "0")}`;
     const nuevaAlerta: Alerta = {
@@ -530,6 +544,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       fecha: hoyStr,
       resuelta: false
     };
+
+    const { error } = await supabase.from("alertas").insert(nuevaAlerta);
+    if (error) {
+      console.error("Error creando alerta:", error.message);
+      return;
+    }
     setAlertas(prev => [nuevaAlerta, ...prev]);
   };
 
