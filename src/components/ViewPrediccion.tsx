@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
-import { Prediccion } from "../types";
 import {
   Info,
   Package,
   CalendarDays,
   ShieldCheck,
-  Zap
+  Zap,
+  TrendingUp
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -25,49 +25,151 @@ import {
   ReferenceLine
 } from "recharts";
 
+// Predicción calculada a partir de datos reales (no ficticios)
+interface PrediccionCalculada {
+  id: string;
+  utilId: string;
+  utilNombre: string;
+  stockActual: number;
+  stockMinimo: number;
+  consumoHistorico: number[];
+  meses: string[];
+  demandaEstimada: number;
+  stockProyectado: number;
+  fechaProbableAgotamiento: string;
+  cantidadRecomendadaReposicion: number;
+  nivelConfianza: number;
+  hayDatos: boolean;
+}
+
+const NOMBRES_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
 export default function ViewPrediccion() {
-  const { predicciones, utiles } = useApp();
+  const { utiles, movimientos } = useApp();
 
-  const [prediccionActiva, setPrediccionActiva] = useState<Prediccion | null>(predicciones[0] || null);
+  // Calcula las predicciones a partir de los útiles y sus movimientos de salida
+  const predicciones = useMemo<PrediccionCalculada[]>(() => {
+    // Construye las etiquetas de los últimos 6 meses
+    const ahora = new Date();
+    const meses: { key: string; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      meses.push({ key, label: NOMBRES_MES[d.getMonth()] });
+    }
 
-  // Convert historical consumption array to Recharts-friendly data
-  const getChartData = (pred: Prediccion) => {
-    const mesesHistoricos = ["Ene", "Feb", "Mar", "Abr", "May", "Jun"];
+    return utiles.map((util) => {
+      // Salidas (consumo) de este útil
+      const salidas = movimientos.filter(m => m.utilId === util.id && m.tipo === "Salida");
+      const porMes: { [key: string]: number } = {};
+      salidas.forEach(m => {
+        const key = (m.fecha || "").substring(0, 7); // "YYYY-MM"
+        porMes[key] = (porMes[key] || 0) + m.cantidad;
+      });
+
+      const consumoHistorico = meses.map(mm => porMes[mm.key] || 0);
+      const sumaVentana = consumoHistorico.reduce((s, v) => s + v, 0);
+      const mesesConDatos = consumoHistorico.filter(v => v > 0).length;
+      const hayDatos = mesesConDatos > 0;
+
+      // Consumo promedio mensual (solo sobre meses con actividad)
+      const promedio = hayDatos ? Math.round(sumaVentana / mesesConDatos) : 0;
+
+      // Demanda estimada para el próximo mes
+      const demandaEstimada = promedio;
+      const stockProyectado = Math.max(0, util.stockActual - demandaEstimada);
+
+      // Fecha probable de agotamiento
+      let fechaProbableAgotamiento: string;
+      if (util.stockActual <= 0) {
+        fechaProbableAgotamiento = "Agotado";
+      } else if (!hayDatos || promedio <= 0) {
+        fechaProbableAgotamiento = "Sin consumo aún";
+      } else {
+        const mesesRestantes = util.stockActual / promedio;
+        const dias = Math.round(mesesRestantes * 30);
+        const f = new Date();
+        f.setDate(f.getDate() + dias);
+        fechaProbableAgotamiento = f.toISOString().split("T")[0];
+      }
+
+      // Reposición recomendada
+      const objetivo = hayDatos
+        ? Math.max(util.stockMinimo, demandaEstimada * 2)
+        : util.stockMinimo * 2;
+      const cantidadRecomendadaReposicion = Math.max(0, objetivo - util.stockActual);
+
+      // Nivel de confianza según cuántos meses de datos hay
+      const nivelConfianza = hayDatos ? Math.min(90, 30 + mesesConDatos * 15) : 25;
+
+      return {
+        id: `PRED-${util.id}`,
+        utilId: util.id,
+        utilNombre: util.nombre,
+        stockActual: util.stockActual,
+        stockMinimo: util.stockMinimo,
+        consumoHistorico,
+        meses: meses.map(m => m.label),
+        demandaEstimada,
+        stockProyectado,
+        fechaProbableAgotamiento,
+        cantidadRecomendadaReposicion,
+        nivelConfianza,
+        hayDatos
+      };
+    });
+  }, [utiles, movimientos]);
+
+  const [seleccionadoId, setSeleccionadoId] = useState<string | null>(null);
+  const prediccionActiva = predicciones.find(p => p.id === seleccionadoId) ?? predicciones[0] ?? null;
+
+  // Datos para el gráfico: histórico real + proyección del próximo mes
+  const getChartData = (pred: PrediccionCalculada) => {
     const data = pred.consumoHistorico.map((val, i) => ({
-      mes: mesesHistoricos[i],
+      mes: pred.meses[i],
       consumo: val,
       proyeccion: null as number | null
     }));
-
-    // Add projected data linking from last historical month
-    const ultimoHistorico = pred.consumoHistorico[pred.consumoHistorico.length - 1];
+    const ultimo = pred.consumoHistorico[pred.consumoHistorico.length - 1] ?? 0;
     data.push({
-      mes: "Jul (Proy.)",
-      consumo: ultimoHistorico, // Connect line
+      mes: "Próx.",
+      consumo: ultimo,
       proyeccion: pred.demandaEstimada
     });
-
     return data;
   };
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
-      
+
+      {/* Nota explicativa del método */}
+      <div className="glass-card p-4 flex items-start gap-3 bg-indigo-50/30 border-l-4 border-indigo-300">
+        <TrendingUp className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+          Las proyecciones se calculan a partir del <strong>consumo real registrado</strong> (movimientos de salida de los últimos 6 meses).
+          Mientras haya pocos movimientos, las estimaciones serán aproximadas y su nivel de confianza irá subiendo conforme se acumulen datos.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        
+
         {/* Left list selector */}
         <div className="xl:col-span-4 space-y-3">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2">Materiales en Análisis</span>
-          
+
           <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+            {predicciones.length === 0 && (
+              <div className="glass-card p-4 text-[11px] text-slate-400 font-bold text-center">
+                No hay útiles registrados para analizar.
+              </div>
+            )}
             {predicciones.map((pred) => {
-              const utilObj = utiles.find(u => u.id === pred.utilId);
-              const esPeligro = pred.stockActual <= (utilObj?.stockMinimo || 20);
+              const esPeligro = pred.stockActual <= pred.stockMinimo;
 
               return (
                 <button
                   key={pred.id}
-                  onClick={() => setPrediccionActiva(pred)}
+                  onClick={() => setSeleccionadoId(pred.id)}
                   className={`w-full text-left p-4 rounded-2xl border transition-all duration-150 flex items-center justify-between ${
                     prediccionActiva?.id === pred.id
                       ? "bg-emerald-50/50 border-emerald-400 shadow-xs"
@@ -82,7 +184,7 @@ export default function ViewPrediccion() {
                     </div>
                     <div>
                       <h4 className="font-bold text-slate-800 text-xs line-clamp-1">{pred.utilNombre}</h4>
-                      <span className="text-[9px] text-slate-400 font-bold block mt-1 uppercase tracking-wide">CONFIDENCIA: {pred.nivelConfianza}%</span>
+                      <span className="text-[9px] text-slate-400 font-bold block mt-1 uppercase tracking-wide">CONFIANZA: {pred.nivelConfianza}%</span>
                     </div>
                   </div>
 
@@ -101,10 +203,10 @@ export default function ViewPrediccion() {
         <div className="xl:col-span-8">
           {prediccionActiva ? (
             <div className="space-y-6">
-              
+
               {/* Top Analytical Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                
+
                 {/* Metric 1: Stock Actual */}
                 <div className="glass-card p-4.5">
                   <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Stock Disponible</span>
@@ -136,7 +238,7 @@ export default function ViewPrediccion() {
                 <div className="glass-card bg-teal-50/30 p-4.5 border-l-4 border-teal-400">
                   <span className="text-[9px] text-teal-800 font-bold uppercase tracking-wider block">Nivel de Confianza</span>
                   <h4 className="text-xl font-black text-teal-950 mt-1.5">{prediccionActiva.nivelConfianza}%</h4>
-                  <span className="text-[9px] text-teal-600/80 font-bold mt-1 block">Precisión estadística</span>
+                  <span className="text-[9px] text-teal-600/80 font-bold mt-1 block">Según datos disponibles</span>
                 </div>
 
               </div>
@@ -146,9 +248,9 @@ export default function ViewPrediccion() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-extrabold text-slate-800 text-sm">Histórico de Consumo vs Demanda Proyectada</h3>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Gráfico de serie temporal de consumo real (6 meses) y proyección estadística</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Consumo real de los últimos 6 meses y proyección para el próximo</p>
                   </div>
-                  <span className="text-[9px] bg-slate-100 border border-slate-200 px-2 py-0.5 text-slate-600 font-bold rounded">Unidad de Medida</span>
+                  <span className="text-[9px] bg-slate-100 border border-slate-200 px-2 py-0.5 text-slate-600 font-bold rounded">Unidades</span>
                 </div>
 
                 <div className="h-68">
@@ -160,8 +262,8 @@ export default function ViewPrediccion() {
                       <Tooltip contentStyle={{ background: "#1e293b", color: "#f8fafc", borderRadius: "8px", fontSize: "11px", border: "none" }} />
                       <Legend iconSize={8} wrapperStyle={{ fontSize: "11px", marginTop: "10px" }} />
                       <Line type="monotone" dataKey="consumo" name="Consumo Real Histórico" stroke="#10b981" strokeWidth={3.5} activeDot={{ r: 6 }} />
-                      <Line type="monotone" dataKey="proyeccion" name="Proyección IA Estimada" stroke="#4f46e5" strokeWidth={3.5} strokeDasharray="5 5" />
-                      
+                      <Line type="monotone" dataKey="proyeccion" name="Proyección Estimada" stroke="#4f46e5" strokeWidth={3.5} strokeDasharray="5 5" />
+
                       {/* Alert line representing stockout point if stock actual is low */}
                       <ReferenceLine y={prediccionActiva.stockActual} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: "Stock Actual", fill: "#f43f5e", fontSize: 9, position: "top" }} />
                     </LineChart>
@@ -181,7 +283,7 @@ export default function ViewPrediccion() {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-800 text-xs">Fecha Estimada de Quiebre / Agotamiento</h4>
-                    <p className="text-[10px] text-slate-400 mt-1">Estimación del fin de existencias basado en velocidad de despacho</p>
+                    <p className="text-[10px] text-slate-400 mt-1">Estimación del fin de existencias basado en la velocidad de consumo</p>
                     <span className={`inline-block mt-2 font-black text-sm uppercase px-3 py-1 rounded-lg ${
                       prediccionActiva.fechaProbableAgotamiento === "Agotado"
                         ? "bg-rose-100 text-rose-800 border border-rose-200"
@@ -198,7 +300,11 @@ export default function ViewPrediccion() {
                     Plan de Reposición Sugerido
                   </h5>
                   <p className="text-[10px] text-slate-500 mt-1 font-medium leading-relaxed">
-                    Para asegurar la operatividad educativa, se sugiere tramitar una requisición por <strong>{prediccionActiva.cantidadRecomendadaReposicion} unidades</strong> con el proveedor local antes de la fecha límite señalada.
+                    {prediccionActiva.cantidadRecomendadaReposicion > 0 ? (
+                      <>Se sugiere tramitar una requisición por <strong>{prediccionActiva.cantidadRecomendadaReposicion} unidades</strong> para mantener un stock de seguridad adecuado.</>
+                    ) : (
+                      <>El stock actual es suficiente por ahora. No se requiere reposición inmediata.</>
+                    )}
                   </p>
                 </div>
               </div>
@@ -206,7 +312,7 @@ export default function ViewPrediccion() {
             </div>
           ) : (
             <div className="bg-white p-12 rounded-3xl border border-slate-150 text-center text-slate-400 font-bold">
-              Seleccione un material escolar para analizar su predicción estadística.
+              Seleccione un material escolar para analizar su predicción.
             </div>
           )}
         </div>
