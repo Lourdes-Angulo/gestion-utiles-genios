@@ -31,7 +31,7 @@ interface SidebarProps {
 
 export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: SidebarProps) {
   const { alertas, recepciones, configuracionColegio } = useApp();
-  
+
   const alertasActivasCount = alertas.filter(al => !al.resuelta).length;
   const recepcionesPendientesCount = recepciones.filter(rc => rc.estado === "Pendiente").length;
 
@@ -44,7 +44,7 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
     { id: "recepcion", label: "Recepción de útiles", icon: CheckSquare, badge: recepcionesPendientesCount, badgeColor: "bg-amber-500" },
     { id: "control_stock", label: "Control de stock", icon: Package },
     { id: "movimientos", label: "Movimientos", icon: ArrowLeftRight },
-    { id: "prediccion", label: "Predicción de stock", icon: TrendingUp, isAi: true },
+    { id: "prediccion", label: "Predicción de stock", icon: TrendingUp },
     { id: "alertas", label: "Alertas", icon: Bell, badge: alertasActivasCount, badgeColor: "bg-rose-500" },
     { id: "reportes", label: "Reportes", icon: FileText },
     { id: "usuarios", label: "Usuarios", icon: UserCheck }
@@ -77,22 +77,20 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = vistaActiva === item.id;
-          
+
           return (
             <button
               key={item.id}
               onClick={() => setVistaActiva(item.id)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 transition-all duration-200 group text-sm sidebar-item-bento ${
-                isActive
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 transition-all duration-200 group text-sm sidebar-item-bento ${isActive
                   ? "sidebar-item-bento-active"
                   : "text-slate-500 hover:text-slate-800"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-3">
                 <Icon
-                  className={`w-4.5 h-4.5 transition-transform duration-200 group-hover:scale-110 ${
-                    isActive ? "text-emerald-700" : "text-slate-400 group-hover:text-slate-600"
-                  }`}
+                  className={`w-4.5 h-4.5 transition-transform duration-200 group-hover:scale-110 ${isActive ? "text-emerald-700" : "text-slate-400 group-hover:text-slate-600"
+                    }`}
                 />
                 <span className="tracking-wide">{item.label}</span>
                 {item.isAi && (
@@ -102,7 +100,7 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
                   </span>
                 )}
               </div>
-              
+
               {item.badge !== undefined && item.badge > 0 && (
                 <span className={`text-[10px] text-white px-2 py-0.5 rounded-full font-bold shadow-inner ${item.badgeColor}`}>
                   {item.badge}

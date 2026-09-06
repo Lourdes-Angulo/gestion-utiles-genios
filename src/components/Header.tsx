@@ -36,7 +36,7 @@ export default function Header({ vistaActiva, setVistaActiva }: HeaderProps) {
       case "movimientos":
         return "Historial de Movimientos de Inventario";
       case "prediccion":
-        return "Predicción de Stock y Demanda con Inteligencia Artificial";
+        return "Predicción de Stock y Demanda";
       case "alertas":
         return "Alertas Inteligentes de Inventario";
       case "reportes":
@@ -67,7 +67,7 @@ export default function Header({ vistaActiva, setVistaActiva }: HeaderProps) {
       case "movimientos":
         return "Registro detallado de transacciones de ingreso, egreso, merma y distribución.";
       case "prediccion":
-        return "Proyecciones analíticas y fechas de quiebre de stock generadas mediante IA predictiva.";
+        return "Proyecciones analíticas y fechas de quiebre de stock basadas en el consumo registrado.";
       case "alertas":
         return "Notificaciones de reabastecimiento urgente, sobreconsumo o inactividad.";
       case "reportes":
@@ -88,12 +88,7 @@ export default function Header({ vistaActiva, setVistaActiva }: HeaderProps) {
         </span>
         <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2 leading-none">
           {getTituloVista()}
-          {vistaActiva === "prediccion" && (
-            <span className="flex items-center gap-0.5 px-2 py-0.5 text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-200 font-bold rounded-md uppercase tracking-wider">
-              <Sparkles className="w-3 h-3 text-indigo-500" />
-              Algoritmo de Demanda
-            </span>
-          )}
+
         </h2>
         <p className="text-[11px] text-slate-400 mt-1 font-medium truncate max-w-xl">
           {getSubtituloVista()}
