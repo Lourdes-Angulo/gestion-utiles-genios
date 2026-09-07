@@ -49,6 +49,7 @@ export default function ViewUtiles() {
   const [mensajeExito, setMensajeExito] = useState("");
 
   const puedeGestionar = ["Administrador", "Secretaria"].includes(usuarioActivo.rol);
+  const esAdmin = usuarioActivo.rol === "Administrador";
 
   const categorias = ["Cuadernos", "Escritura", "Papelería", "Arte y Pintura", "Pegamentos", "Otros"];
   const unidades = ["Unidad", "Caja", "Paquete", "Docena", "Millar"];
@@ -120,7 +121,7 @@ export default function ViewUtiles() {
     const term = filtroBusqueda.toLowerCase();
     const cumpleBusqueda = ut.nombre.toLowerCase().includes(term) || ut.codigo.toLowerCase().includes(term) || ut.ubicación.toLowerCase().includes(term);
     const cumpleCategoria = filtroCategoria === "" || ut.categoria === filtroCategoria;
-    
+
     let cumpleDisponibilidad = true;
     if (filtroDisponibilidad === "normal") {
       cumpleDisponibilidad = ut.stockActual > ut.stockMinimo;
@@ -135,7 +136,7 @@ export default function ViewUtiles() {
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
-      
+
       {mensajeExito && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fade-in">
           <Package className="w-5 h-5 text-emerald-600" />
@@ -206,13 +207,12 @@ export default function ViewUtiles() {
             return (
               <div
                 key={ut.id}
-                className={`glass-card p-6 flex flex-col justify-between ${
-                  esSinStock 
-                    ? "border-l-4 border-l-rose-500" 
-                    : esStockBajo 
-                    ? "border-l-4 border-l-amber-500" 
+                className={`glass-card p-6 flex flex-col justify-between ${esSinStock
+                  ? "border-l-4 border-l-rose-500"
+                  : esStockBajo
+                    ? "border-l-4 border-l-amber-500"
                     : "border-l-4 border-l-emerald-500"
-                }`}
+                  }`}
               >
                 <div>
                   <div className="flex items-start justify-between border-b border-slate-100 pb-3.5 mb-3.5">
@@ -233,19 +233,17 @@ export default function ViewUtiles() {
                   <div className="space-y-2 text-xs font-semibold">
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">Stock Actual:</span>
-                      <span className={`text-sm font-black ${
-                        esSinStock ? "text-rose-600" : esStockBajo ? "text-amber-500" : "text-emerald-600"
-                      }`}>
+                      <span className={`text-sm font-black ${esSinStock ? "text-rose-600" : esStockBajo ? "text-amber-500" : "text-emerald-600"
+                        }`}>
                         {ut.stockActual} {ut.unidadMedida}(s)
                       </span>
                     </div>
 
                     {/* Stock level indicators */}
                     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full ${
-                          esSinStock ? "bg-rose-500" : esStockBajo ? "bg-amber-500" : "bg-emerald-500"
-                        }`}
+                      <div
+                        className={`h-full rounded-full ${esSinStock ? "bg-rose-500" : esStockBajo ? "bg-amber-500" : "bg-emerald-500"
+                          }`}
                         style={{ width: `${Math.min((ut.stockActual / Math.max(ut.stockMinimo * 2.5, 1)) * 100, 100)}%` }}
                       />
                     </div>
@@ -261,13 +259,12 @@ export default function ViewUtiles() {
 
                 {/* Status Badges & Action Buttons */}
                 <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-5">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    esSinStock 
-                      ? "bg-rose-50 text-rose-700 border border-rose-100" 
-                      : esStockBajo 
-                      ? "bg-amber-50 text-amber-700 border border-amber-100" 
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${esSinStock
+                    ? "bg-rose-50 text-rose-700 border border-rose-100"
+                    : esStockBajo
+                      ? "bg-amber-50 text-amber-700 border border-amber-100"
                       : "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                  }`}>
+                    }`}>
                     {esSinStock ? (
                       <>
                         <AlertTriangle className="w-3.5 h-3.5" />
@@ -293,7 +290,7 @@ export default function ViewUtiles() {
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    {puedeGestionar && (
+                    {esAdmin && (
                       <>
                         <button
                           onClick={() => handleAbrirEdicion(ut)}
@@ -303,11 +300,10 @@ export default function ViewUtiles() {
                         </button>
                         <button
                           onClick={() => desactivarUtil(ut.id)}
-                          className={`p-2 rounded-lg transition-colors border border-transparent ${
-                            ut.estado === "Activo" 
-                              ? "text-slate-400 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-100" 
+                          className={`p-2 rounded-lg transition-colors border border-transparent ${ut.estado === "Activo"
+                              ? "text-slate-400 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-100"
                               : "text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-100"
-                          }`}
+                            }`}
                           title={ut.estado === "Activo" ? "Desactivar" : "Activar"}
                         >
                           <Trash2 className="w-4 h-4" />
