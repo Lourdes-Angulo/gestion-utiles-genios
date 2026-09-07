@@ -3,82 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React from "react";
 import { useApp } from "../context/AppContext";
 import { Usuario } from "../types";
 import {
   Users,
-  ShieldAlert,
-  UserPlus,
-  Edit,
-  X,
-  Check,
-  Trash2,
   Lock,
-  Eye,
-  KeyRound
+  Info
 } from "lucide-react";
 
 export default function ViewUsuarios() {
-  const { usuarios, guardarUsuario, eliminarUsuario, usuarioActivo } = useApp();
-
-  const [mostrarModal, setMostrarModal] = useState(false);
-  const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
-
-  // Form states
-  const [formNombre, setFormNombre] = useState("");
-  const [formCorreo, setFormCorreo] = useState("");
-  const [formRol, setFormRol] = useState<"Administrador" | "Secretaria">("Secretaria");
-  const [formEstado, setFormEstado] = useState<"Activo" | "Inactivo">("Activo");
-
-  const [mensajeExito, setMensajeExito] = useState("");
-
-  const tienePermisosEdicion = ["Administrador", "Secretaria"].includes(usuarioActivo.rol);
-
-  const handleAbrirCrear = () => {
-    setUsuarioEditando(null);
-    setFormNombre("");
-    setFormCorreo("");
-    setFormRol("Secretaria");
-    setFormEstado("Activo");
-    setMostrarModal(true);
-  };
-
-  const handleAbrirEditar = (usr: Usuario) => {
-    setUsuarioEditando(usr);
-    setFormNombre(usr.nombre);
-    setFormCorreo(usr.correo);
-    setFormRol(usr.rol);
-    setFormEstado(usr.estado);
-    setMostrarModal(true);
-  };
-
-  const handleGuardar = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formNombre || !formCorreo) return;
-
-    const nuevoUsuario: Usuario = {
-      id: usuarioEditando ? usuarioEditando.id : `usr-${Date.now()}`,
-      nombre: formNombre,
-      correo: formCorreo,
-      rol: formRol,
-      permisos: usuarioEditando ? usuarioEditando.permisos : ["Ver todo"],
-      estado: formEstado,
-      avatar: usuarioEditando ? usuarioEditando.avatar : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"
-    };
-
-    guardarUsuario(nuevoUsuario);
-    setMostrarModal(false);
-    setMensajeExito(usuarioEditando ? "Usuario actualizado con éxito." : "Nuevo usuario registrado en el sistema.");
-    setTimeout(() => setMensajeExito(""), 4000);
-  };
+  const { usuarios, usuarioActivo } = useApp();
 
   const getPermisosDescripcion = (rol: Usuario["rol"]) => {
     switch (rol) {
       case "Administrador":
-        return "Acceso total e irrestricto a todos los módulos, configuración general, gestión de almacén, base de datos y administración de usuarios.";
+        return "Acceso total e irrestricto a todos los módulos, gestión de almacén, base de datos y administración de usuarios.";
       case "Secretaria":
-        return "Gestión de matrículas (Estudiantes), control de recepciones, listas de útiles y consulta de stock."; default:
+        return "Gestión de matrículas (Estudiantes), control de recepciones, listas de útiles y consulta de stock.";
+      default:
         return "Sin permisos asignados.";
     }
   };
@@ -86,32 +29,25 @@ export default function ViewUsuarios() {
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8] text-xs font-semibold">
 
-      {mensajeExito && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fade-in">
-          <Users className="w-5 h-5 text-emerald-600" />
-          <span className="text-xs font-bold">{mensajeExito}</span>
-        </div>
-      )}
-
-      {/* Control Panel / Actions */}
+      {/* Control Panel / Header */}
       <div className="glass-card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Lock className="w-5 h-5 text-emerald-600 shrink-0" />
           <div>
             <h4 className="font-bold text-slate-800 text-sm">Usuarios y Permisos</h4>
-            <p className="text-[11px] text-slate-400 mt-0.5">Gestión de accesos y asignación de roles para el personal del colegio</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Roles del personal del colegio con acceso al sistema</p>
           </div>
         </div>
+      </div>
 
-        {tienePermisosEdicion && (
-          <button
-            onClick={handleAbrirCrear}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all duration-200 shadow-sm"
-          >
-            <UserPlus className="w-4.5 h-4.5" />
-            Añadir Nuevo Usuario
-          </button>
-        )}
+      {/* Nota informativa sobre la gestión de cuentas */}
+      <div className="glass-card p-4 flex items-start gap-3 bg-indigo-50/30 border-l-4 border-indigo-300">
+        <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+          Esta sección muestra los perfiles y sus niveles de acceso. La creación de nuevas cuentas y el cambio
+          de contraseñas se gestionan de forma segura desde el panel de administración del sistema (Supabase),
+          para garantizar el manejo protegido de las credenciales.
+        </p>
       </div>
 
       {/* Users grid */}
@@ -160,126 +96,10 @@ export default function ViewUsuarios() {
                 <p className="font-semibold leading-relaxed text-slate-600">{getPermisosDescripcion(usr.rol)}</p>
               </div>
 
-              {/* Bottom Actions Row */}
-              {tienePermisosEdicion && (
-                <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => handleAbrirEditar(usr)}
-                    className="flex items-center gap-1.5 text-slate-600 hover:text-slate-800 font-bold text-[11px] hover:underline"
-                  >
-                    <Edit className="w-4 h-4" />
-                    Editar Perfil
-                  </button>
-
-                  {!esMismoUsuario && (
-                    <button
-                      onClick={() => {
-                        if (confirm(`¿Está seguro de eliminar el acceso de ${usr.nombre}?`)) {
-                          eliminarUsuario(usr.id);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 text-rose-600 hover:text-rose-700 font-bold text-[11px] hover:underline"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Dar de Baja
-                    </button>
-                  )}
-                </div>
-              )}
-
             </div>
           );
         })}
       </div>
-
-      {/* Modal: Agregar / Editar Usuario */}
-      {mostrarModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-150 max-w-md w-full overflow-hidden animate-scale-up">
-            <div className="p-6 bg-slate-50 border-b border-slate-150 flex items-center justify-between">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-600" />
-                {usuarioEditando ? "Editar Credenciales" : "Añadir Nuevo Acceso"}
-              </h3>
-              <button
-                onClick={() => setMostrarModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-lg border border-slate-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleGuardar} className="p-6 space-y-4">
-              <div>
-                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Nombre Completo</label>
-                <input
-                  type="text"
-                  required
-                  value={formNombre}
-                  onChange={(e) => setFormNombre(e.target.value)}
-                  placeholder="Ejm: Shirley Meléndez"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Correo de Acceso (Email)</label>
-                <input
-                  type="email"
-                  required
-                  value={formCorreo}
-                  onChange={(e) => setFormCorreo(e.target.value)}
-                  placeholder="Ejm: s.melendez@iepgenios.edu.pe"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Rol Operativo</label>
-                  <select
-                    value={formRol}
-                    onChange={(e) => setFormRol(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none"
-                  >
-                    <option value="Administrador">Administrador</option>
-                    <option value="Secretaria">Secretaria</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Estado</label>
-                  <select
-                    value={formEstado}
-                    onChange={(e) => setFormEstado(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none"
-                  >
-                    <option value="Activo">Activo</option>
-                    <option value="Inactivo">Inactivo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setMostrarModal(false)}
-                  className="px-4 py-2.5 border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 flex items-center gap-2 font-bold"
-                >
-                  <Check className="w-4.5 h-4.5" />
-                  Confirmar Guardado
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );
