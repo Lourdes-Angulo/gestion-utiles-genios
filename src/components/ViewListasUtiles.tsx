@@ -42,6 +42,7 @@ export default function ViewListasUtiles() {
   const [mensajeExito, setMensajeExito] = useState("");
 
   const puedeGestionar = ["Administrador", "Secretaria"].includes(usuarioActivo.rol);
+  const esAdmin = usuarioActivo.rol === "Administrador";
 
   const handleAbrirCrear = () => {
     setFormNivel("Primaria");
@@ -95,7 +96,7 @@ export default function ViewListasUtiles() {
     guardarListaUtil(nuevaLista);
     setMostrarModalCrear(false);
     setMensajeExito("Lista de útiles configurada con éxito.");
-    
+
     // Auto-select the newly created or updated list
     const actualizadas = listas.find(l => l.grado === formGrado && l.nivel === formNivel);
     if (actualizadas) {
@@ -116,7 +117,7 @@ export default function ViewListasUtiles() {
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
-      
+
       {mensajeExito && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fade-in">
           <ClipboardList className="w-5 h-5 text-emerald-600" />
@@ -161,7 +162,7 @@ export default function ViewListasUtiles() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* Left Side: List Selector */}
         <div className="lg:col-span-4 space-y-3">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2">Listas por Grado Académico</span>
@@ -175,16 +176,14 @@ export default function ViewListasUtiles() {
                 <button
                   key={lista.id}
                   onClick={() => setListaSeleccionada(lista)}
-                  className={`w-full text-left p-4.5 rounded-2xl border transition-all duration-200 flex items-center justify-between ${
-                    isSelected
-                      ? "bg-emerald-50 border-emerald-300 shadow-xs"
-                      : "glass-card hover:bg-slate-50/50"
-                  }`}
+                  className={`w-full text-left p-4.5 rounded-2xl border transition-all duration-200 flex items-center justify-between ${isSelected
+                    ? "bg-emerald-50 border-emerald-300 shadow-xs"
+                    : "glass-card hover:bg-slate-50/50"
+                    }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl border ${
-                      isSelected ? "bg-emerald-200/50 text-emerald-800 border-emerald-300" : "bg-slate-50 text-slate-500 border-slate-100"
-                    }`}>
+                    <div className={`p-2.5 rounded-xl border ${isSelected ? "bg-emerald-200/50 text-emerald-800 border-emerald-300" : "bg-slate-50 text-slate-500 border-slate-100"
+                      }`}>
                       <GraduationCap className="w-5 h-5" />
                     </div>
                     <div>
@@ -221,7 +220,7 @@ export default function ViewListasUtiles() {
         <div className="lg:col-span-8">
           {listaSeleccionada ? (
             <div className="glass-card overflow-hidden flex flex-col">
-              
+
               {/* Header Details */}
               <div className="p-6 bg-slate-50 border-b border-slate-150 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
@@ -238,7 +237,7 @@ export default function ViewListasUtiles() {
                   </h3>
                 </div>
 
-                {puedeGestionar && (
+                {esAdmin && (
                   <button
                     onClick={() => {
                       if (confirm("¿Está seguro de eliminar esta lista de útiles?")) {
