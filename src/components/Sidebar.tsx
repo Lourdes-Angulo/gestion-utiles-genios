@@ -30,7 +30,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: SidebarProps) {
-  const { alertas, recepciones, configuracionColegio } = useApp();
+  const { alertas, recepciones, configuracionColegio, usuarioActivo } = useApp();
 
   const alertasActivasCount = alertas.filter(al => !al.resuelta).length;
   const recepcionesPendientesCount = recepciones.filter(rc => rc.estado === "Pendiente").length;
@@ -73,41 +73,44 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
         <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold px-3 mb-2">
           Módulos del Sistema
         </div>
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = vistaActiva === item.id;
+        
+        {menuItems
+          .filter((item) => item.id !== "usuarios" || usuarioActivo.rol === "Administrador")
+          .map((item) => {
+            const Icon = item.icon;
+            const isActive = vistaActiva === item.id;
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => setVistaActiva(item.id)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 transition-all duration-200 group text-sm sidebar-item-bento ${isActive
+            return (
+              <button
+                key={item.id}
+                onClick={() => setVistaActiva(item.id)}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 transition-all duration-200 group text-sm sidebar-item-bento ${isActive
                   ? "sidebar-item-bento-active"
                   : "text-slate-500 hover:text-slate-800"
-                }`}
-            >
-              <div className="flex items-center gap-3">
-                <Icon
-                  className={`w-4.5 h-4.5 transition-transform duration-200 group-hover:scale-110 ${isActive ? "text-emerald-700" : "text-slate-400 group-hover:text-slate-600"
-                    }`}
-                />
-                <span className="tracking-wide">{item.label}</span>
-                {item.isAi && (
-                  <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 font-bold rounded uppercase tracking-wider shadow-sm animate-pulse">
-                    <Sparkles className="w-2.5 h-2.5" />
-                    IA
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icon
+                    className={`w-4.5 h-4.5 transition-transform duration-200 group-hover:scale-110 ${isActive ? "text-emerald-700" : "text-slate-400 group-hover:text-slate-600"
+                      }`}
+                  />
+                  <span className="tracking-wide">{item.label}</span>
+                  {item.isAi && (
+                    <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 font-bold rounded uppercase tracking-wider shadow-sm animate-pulse">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      IA
+                    </span>
+                  )}
+                </div>
+
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className={`text-[10px] text-white px-2 py-0.5 rounded-full font-bold shadow-inner ${item.badgeColor}`}>
+                    {item.badge}
                   </span>
                 )}
-              </div>
-
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className={`text-[10px] text-white px-2 py-0.5 rounded-full font-bold shadow-inner ${item.badgeColor}`}>
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
       </nav>
 
       {/* Footer Branding */}
