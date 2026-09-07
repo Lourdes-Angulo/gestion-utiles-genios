@@ -51,6 +51,7 @@ export default function ViewEstudiantes() {
 
   // Check roles permissions
   const puedeRegistrar = ["Administrador", "Secretaria"].includes(usuarioActivo.rol);
+  const esAdmin = usuarioActivo.rol === "Administrador";
 
   const handleAbrirRegistro = () => {
     setEsEdicion(false);
@@ -131,7 +132,7 @@ export default function ViewEstudiantes() {
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
-      
+
       {mensajeExito && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fade-in">
           <UserCheck className="w-5 h-5 text-emerald-600" />
@@ -235,13 +236,12 @@ export default function ViewEstudiantes() {
                       </div>
                     </td>
                     <td className="p-5">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        est.nivel === "Inicial" 
-                          ? "bg-purple-50 text-purple-700 border border-purple-100" 
-                          : est.nivel === "Primaria" 
-                          ? "bg-blue-50 text-blue-700 border border-blue-100" 
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${est.nivel === "Inicial"
+                        ? "bg-purple-50 text-purple-700 border border-purple-100"
+                        : est.nivel === "Primaria"
+                          ? "bg-blue-50 text-blue-700 border border-blue-100"
                           : "bg-indigo-50 text-indigo-700 border border-indigo-100"
-                      }`}>
+                        }`}>
                         {est.nivel}
                       </span>
                     </td>
@@ -252,11 +252,10 @@ export default function ViewEstudiantes() {
                       {est.apoderadoNombre}
                     </td>
                     <td className="p-5 text-center">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        est.estado === "Activo" 
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
-                          : "bg-slate-100 text-slate-500 border border-slate-200"
-                      }`}>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${est.estado === "Activo"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                        : "bg-slate-100 text-slate-500 border border-slate-200"
+                        }`}>
                         {est.estado}
                       </span>
                     </td>
@@ -269,7 +268,7 @@ export default function ViewEstudiantes() {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        
+
                         {puedeRegistrar && (
                           <>
                             <button
@@ -278,18 +277,20 @@ export default function ViewEstudiantes() {
                               className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-150"
                             >
                               <Edit2 className="w-4 h-4" />
+
                             </button>
-                            <button
-                              onClick={() => desactivarEstudiante(est.id)}
-                              title={est.estado === "Activo" ? "Desactivar" : "Activar"}
-                              className={`p-2 rounded-lg transition-colors duration-150 ${
-                                est.estado === "Activo"
+                            {esAdmin && (
+                              <button
+                                onClick={() => desactivarEstudiante(est.id)}
+                                title={est.estado === "Activo" ? "Desactivar" : "Activar"}
+                                className={`p-2 rounded-lg transition-colors duration-150 ${est.estado === "Activo"
                                   ? "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                                   : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
-                              }`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                                  }`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
