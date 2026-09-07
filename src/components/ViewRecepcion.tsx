@@ -51,6 +51,7 @@ export default function ViewRecepcion() {
   const [nuevoRecepEstudianteId, setNuevoRecepEstudianteId] = useState("");
   const [nuevoRecepCantidades, setNuevoRecepCantidades] = useState<{ [utilId: string]: number }>({});
   const [nuevoRecepObservaciones, setNuevoRecepObservaciones] = useState("");
+  const [nuevoRecepEntregadoPor, setNuevoRecepEntregadoPor] = useState("");
 
   const handleSelectEstudianteNuevaRecepcion = (estId: string) => {
     setNuevoRecepEstudianteId(estId);
@@ -111,7 +112,8 @@ export default function ViewRecepcion() {
       items,
       estado,
       observaciones: nuevoRecepObservaciones,
-      recibidoPor: `${usuarioActivo.nombre} (${usuarioActivo.rol})`
+      recibidoPor: `${usuarioActivo.nombre} (${usuarioActivo.rol})`,
+      entregadoPor: nuevoRecepEntregadoPor
     };
 
     registrarNuevaRecepcion(nueva);
@@ -222,6 +224,7 @@ export default function ViewRecepcion() {
                 setNuevoRecepEstudianteId("");
                 setNuevoRecepCantidades({});
                 setNuevoRecepObservaciones("");
+                setNuevoRecepEntregadoPor("");
                 setMostrarModalNuevaRecepcion(true);
               }}
               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all duration-200 shadow-sm cursor-pointer"
@@ -349,7 +352,11 @@ export default function ViewRecepcion() {
                     <span className="text-slate-800 font-bold font-mono">{recepcionSeleccionada.fechaRecepcion}</span>
                   </div>
                   <div className="flex justify-between mt-1">
-                    <span className="text-slate-400 font-bold">Recibido por:</span>
+                    <span className="text-slate-400 font-bold">Entregado por:</span>
+                    <span className="text-slate-800 font-bold">{recepcionSeleccionada.entregadoPor || "-"}</span>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-slate-400 font-bold">Cotejado por:</span>
                     <span className="text-slate-800 font-bold">{recepcionSeleccionada.recibidoPor}</span>
                   </div>
                 </div>
@@ -548,6 +555,10 @@ export default function ViewRecepcion() {
                   <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Estado Entrega:</span>
                   <span className="text-slate-800 font-bold block uppercase">{recepcionSeleccionada.estado}</span>
                 </div>
+                <div className="mt-2">
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Entregado por:</span>
+                  <span className="text-slate-800 font-bold block">{recepcionSeleccionada.entregadoPor || "-"}</span>
+                </div>
               </div>
 
               {/* Items checklist table */}
@@ -683,15 +694,9 @@ export default function ViewRecepcion() {
                         <span className="font-bold text-emerald-950">{student.grado} - {student.nivel}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 font-bold block">APODERADO</span>
-                        <span className="font-bold text-emerald-950">{student.apoderadoNombre}</span>
+                        <span className="text-[10px] text-slate-400 font-bold block">COTEJADO POR</span>
+                        <span className="font-bold text-emerald-950">{usuarioActivo.nombre} ({usuarioActivo.rol})</span>
                       </div>
-                      {student.apoderadoSecundarioNombre && (
-                        <div className="col-span-2">
-                          <span className="text-[10px] text-slate-400 font-bold block">APODERADO SECUNDARIO</span>
-                          <span className="font-bold text-slate-700">{student.apoderadoSecundarioNombre}</span>
-                        </div>
-                      )}
                     </div>
 
                     {/* Materials List Form */}
@@ -753,6 +758,20 @@ export default function ViewRecepcion() {
                   </div>
                 );
               })()}
+
+              {/* Quién deja los útiles */}
+              {nuevoRecepEstudianteId && (
+                <div className="space-y-1.5">
+                  <label className="block text-slate-500 uppercase tracking-wide">Nombre de quién deja los útiles</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. María Rentería (madre), un familiar, etc."
+                    value={nuevoRecepEntregadoPor}
+                    onChange={(e) => setNuevoRecepEntregadoPor(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-700 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  />
+                </div>
+              )}
 
               {/* Observaciones Field */}
               {nuevoRecepEstudianteId && (

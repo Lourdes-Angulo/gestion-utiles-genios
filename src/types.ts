@@ -68,6 +68,7 @@ export interface Recepcion {
   estado: "Completo" | "Incompleto" | "Pendiente";
   observaciones?: string;
   recibidoPor: string;
+  entregadoPor?: string;
 }
 
 export interface ControlStockItem {
