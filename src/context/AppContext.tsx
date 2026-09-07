@@ -4,11 +4,10 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { Estudiante, Apoderado, UtilEscolar, ListaUtil, Recepcion, Movimiento, Prediccion, Alerta, Usuario } from "../types";
+import { Estudiante, UtilEscolar, ListaUtil, Recepcion, Movimiento, Prediccion, Alerta, Usuario } from "../types";
 import { supabase } from "../lib/supabaseClient";
 import {
   INITIAL_STUDENTS,
-  INITIAL_GUARDIANS,
   INITIAL_SUPPLIES,
   INITIAL_LISTS,
   INITIAL_RECEIPTS,
@@ -20,7 +19,6 @@ import {
 
 interface AppContextType {
   estudiantes: Estudiante[];
-  apoderados: Apoderado[];
   utiles: UtilEscolar[];
   listas: ListaUtil[];
   recepciones: Recepcion[];
@@ -35,9 +33,6 @@ interface AppContextType {
   registrarEstudiante: (est: Omit<Estudiante, "id" | "codigo">) => void;
   editarEstudiante: (est: Estudiante) => void;
   desactivarEstudiante: (id: string) => void;
-
-  registrarApoderado: (apod: Omit<Apoderado, "id">) => void;
-  editarApoderado: (apod: Apoderado) => void;
 
   registrarUtil: (util: Omit<UtilEscolar, "id">) => void;
   editarUtil: (util: UtilEscolar) => void;
@@ -67,7 +62,6 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [estudiantes, setEstudiantes] = useState<Estudiante[]>(INITIAL_STUDENTS);
-  const [apoderados, setApoderados] = useState<Apoderado[]>(INITIAL_GUARDIANS);
   const [utiles, setUtiles] = useState<UtilEscolar[]>(INITIAL_SUPPLIES);
   const [listas, setListas] = useState<ListaUtil[]>(INITIAL_LISTS);
   const [recepciones, setRecepciones] = useState<Recepcion[]>(INITIAL_RECEIPTS);
@@ -101,14 +95,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         console.error("Error cargando útiles desde Supabase:", utilesError.message);
       } else if (utilesData) {
         setUtiles(utilesData as UtilEscolar[]);
-      }
-
-      // Apoderados
-      const { data: apoderadosData, error: apoderadosError } = await supabase.from("apoderados").select("*").order("id");
-      if (apoderadosError) {
-        console.error("Error cargando apoderados desde Supabase:", apoderadosError.message);
-      } else if (apoderadosData) {
-        setApoderados(apoderadosData as Apoderado[]);
       }
 
       // Estudiantes
@@ -185,23 +171,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
     setEstudiantes(prev => [...prev, nuevoEst]);
 
-    // 2. Vincula el estudiante a su apoderado (actualiza también en Supabase)
-    const guardian = apoderados.find(ap => ap.id === est.apoderadoId);
-    if (guardian) {
-      const nuevosIds = [...guardian.estudiantesIds, nuevoId];
-      const nuevosNombres = [...guardian.estudiantesNombres, `${est.nombres} ${est.apellidos}`];
-      const { error: gErr } = await supabase.from("apoderados")
-        .update({ estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres })
-        .eq("id", guardian.id);
-      if (gErr) {
-        console.error("Error vinculando estudiante al apoderado:", gErr.message);
-      }
-      setApoderados(prev => prev.map(ap => ap.id === guardian.id
-        ? { ...ap, estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres }
-        : ap));
-    }
-
-    // 3. Genera recepción pendiente si existe lista para el grado (también en Supabase)
+    // 2. Genera recepción pendiente si existe lista para el grado (también en Supabase)
     const listaGrado = listas.find(l => l.grado === est.grado);
     if (listaGrado) {
       const nuevaRecepcion: Recepcion = {
@@ -240,29 +210,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     setEstudiantes(prev => prev.map(e => e.id === est.id ? est : e));
-
-    // 2. Actualiza el vínculo con el apoderado (también en Supabase)
-    const guardian = apoderados.find(ap => ap.id === est.apoderadoId);
-    if (guardian) {
-      const index = guardian.estudiantesIds.indexOf(est.id);
-      let nuevosIds = guardian.estudiantesIds;
-      let nuevosNombres = [...guardian.estudiantesNombres];
-      if (index === -1) {
-        nuevosIds = [...guardian.estudiantesIds, est.id];
-        nuevosNombres = [...guardian.estudiantesNombres, `${est.nombres} ${est.apellidos}`];
-      } else {
-        nuevosNombres[index] = `${est.nombres} ${est.apellidos}`;
-      }
-      const { error: gErr } = await supabase.from("apoderados")
-        .update({ estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres })
-        .eq("id", guardian.id);
-      if (gErr) {
-        console.error("Error actualizando apoderado vinculado:", gErr.message);
-      }
-      setApoderados(prev => prev.map(ap => ap.id === guardian.id
-        ? { ...ap, estudiantesIds: nuevosIds, estudiantesNombres: nuevosNombres }
-        : ap));
-    }
   };
 
   const desactivarEstudiante = async (id: string) => {
@@ -277,42 +224,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     setEstudiantes(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
-  };
-
-  const registrarApoderado = async (apod: Omit<Apoderado, "id">) => {
-    const nuevoId = `A${String(apoderados.length + 1).padStart(3, "0")}`;
-    const nuevoApod: Apoderado = {
-      ...apod,
-      id: nuevoId
-    };
-
-    const { error } = await supabase.from("apoderados").insert(nuevoApod);
-    if (error) {
-      console.error("Error registrando apoderado:", error.message);
-      alert("No se pudo guardar el apoderado en la base de datos: " + error.message);
-      return;
-    }
-    setApoderados(prev => [...prev, nuevoApod]);
-  };
-
-  const editarApoderado = async (apod: Apoderado) => {
-    const { error } = await supabase.from("apoderados").update(apod).eq("id", apod.id);
-    if (error) {
-      console.error("Error editando apoderado:", error.message);
-      alert("No se pudo actualizar el apoderado en la base de datos: " + error.message);
-      return;
-    }
-    setApoderados(prev => prev.map(a => a.id === apod.id ? apod : a));
-    // Sync with students
-    setEstudiantes(prev => prev.map(e => {
-      if (e.apoderadoId === apod.id) {
-        return {
-          ...e,
-          apoderadoNombre: `${apod.nombres} ${apod.apellidos}`
-        };
-      }
-      return e;
-    }));
   };
 
   const registrarUtil = async (util: Omit<UtilEscolar, "id">) => {
@@ -626,7 +537,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     <AppContext.Provider
       value={{
         estudiantes,
-        apoderados,
         utiles,
         listas,
         recepciones,
@@ -640,9 +550,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         registrarEstudiante,
         editarEstudiante,
         desactivarEstudiante,
-
-        registrarApoderado,
-        editarApoderado,
 
         registrarUtil,
         editarUtil,

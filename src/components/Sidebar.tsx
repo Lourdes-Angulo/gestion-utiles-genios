@@ -38,7 +38,6 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
   const menuItems = [
     { id: "inicio", label: "Inicio", icon: LayoutDashboard },
     { id: "estudiantes", label: "Estudiantes", icon: GraduationCap },
-    { id: "apoderados", label: "Apoderados", icon: Users },
     { id: "utiles", label: "Útiles escolares", icon: BookOpen },
     { id: "listas", label: "Listas de útiles", icon: ClipboardList },
     { id: "recepcion", label: "Recepción de útiles", icon: CheckSquare, badge: recepcionesPendientesCount, badgeColor: "bg-amber-500" },

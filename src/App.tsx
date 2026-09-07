@@ -15,7 +15,6 @@ import Login from "./components/Login";
 // Import view components
 import ViewInicio from "./components/ViewInicio";
 import ViewEstudiantes from "./components/ViewEstudiantes";
-import ViewApoderados from "./components/ViewApoderados";
 import ViewUtiles from "./components/ViewUtiles";
 import ViewListasUtiles from "./components/ViewListasUtiles";
 import ViewRecepcion from "./components/ViewRecepcion";
@@ -39,8 +38,6 @@ function MainLayout({ onLogout }: MainLayoutProps) {
         return <ViewInicio setVistaActiva={setVistaActiva} />;
       case "estudiantes":
         return <ViewEstudiantes />;
-      case "apoderados":
-        return <ViewApoderados />;
       case "utiles":
         return <ViewUtiles />;
       case "listas":

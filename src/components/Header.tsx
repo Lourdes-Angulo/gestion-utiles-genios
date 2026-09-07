@@ -23,8 +23,6 @@ export default function Header({ vistaActiva, setVistaActiva }: HeaderProps) {
         return "Panel de Control General";
       case "estudiantes":
         return "Gestión de Estudiantes";
-      case "apoderados":
-        return "Gestión de Apoderados / Tutores";
       case "utiles":
         return "Catálogo de Útiles Escolares";
       case "listas":
@@ -54,8 +52,6 @@ export default function Header({ vistaActiva, setVistaActiva }: HeaderProps) {
         return `Resumen actual de inventario, recepciones y proyecciones para el año escolar ${configuracionColegio.anioEscolar}.`;
       case "estudiantes":
         return "Fichas de estudiantes matriculados y asignación de listas de útiles.";
-      case "apoderados":
-        return "Registro de padres de familia, tutores legales y datos de contacto oficiales.";
       case "utiles":
         return "Catálogo unificado de materiales escolares, almacenes y stock mínimo.";
       case "listas":
