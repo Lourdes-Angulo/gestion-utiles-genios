@@ -23,7 +23,6 @@ import {
 export default function ViewEstudiantes() {
   const {
     estudiantes,
-    apoderados,
     registrarEstudiante,
     editarEstudiante,
     desactivarEstudiante,
@@ -45,8 +44,8 @@ export default function ViewEstudiantes() {
   const [formApellidos, setFormApellidos] = useState("");
   const [formGrado, setFormGrado] = useState("1er Grado");
   const [formNivel, setFormNivel] = useState<"Inicial" | "Primaria">("Primaria");
-  const [formApoderadoId, setFormApoderadoId] = useState("");
-  const [formApoderadoSecundarioId, setFormApoderadoSecundarioId] = useState("");
+  const [formApoderadoNombre, setFormApoderadoNombre] = useState("");
+  const [formApoderadoSecundarioNombre, setFormApoderadoSecundarioNombre] = useState("");
 
   const [mensajeExito, setMensajeExito] = useState("");
 
@@ -59,8 +58,8 @@ export default function ViewEstudiantes() {
     setFormApellidos("");
     setFormGrado("1er Grado");
     setFormNivel("Primaria");
-    setFormApoderadoId(apoderados[0]?.id || "");
-    setFormApoderadoSecundarioId("");
+    setFormApoderadoNombre("");
+    setFormApoderadoSecundarioNombre("");
     setMostrarModalRegistro(true);
   };
 
@@ -71,8 +70,8 @@ export default function ViewEstudiantes() {
     setFormApellidos(est.apellidos);
     setFormGrado(est.grado);
     setFormNivel(est.nivel as "Inicial" | "Primaria");
-    setFormApoderadoId(est.apoderadoId);
-    setFormApoderadoSecundarioId(est.apoderadoSecundarioId || "");
+    setFormApoderadoNombre(est.apoderadoNombre || "");
+    setFormApoderadoSecundarioNombre(est.apoderadoSecundarioNombre || "");
     setMostrarModalRegistro(true);
   };
 
@@ -85,15 +84,8 @@ export default function ViewEstudiantes() {
     e.preventDefault();
     if (!formNombres.trim() || !formApellidos.trim()) return;
 
-    const guardianSeleccionado = apoderados.find(a => a.id === formApoderadoId);
-    const guardianNombre = guardianSeleccionado 
-      ? `${guardianSeleccionado.nombres} ${guardianSeleccionado.apellidos}` 
-      : "No asignado";
-
-    const guardianSecundarioSeleccionado = apoderados.find(a => a.id === formApoderadoSecundarioId);
-    const guardianSecundarioNombre = guardianSecundarioSeleccionado 
-      ? `${guardianSecundarioSeleccionado.nombres} ${guardianSecundarioSeleccionado.apellidos}` 
-      : undefined;
+    const apoderadoNombre = formApoderadoNombre.trim() || "No asignado";
+    const apoderadoSecundarioNombre = formApoderadoSecundarioNombre.trim() || undefined;
 
     if (esEdicion && estudianteSeleccionado) {
       editarEstudiante({
@@ -102,10 +94,8 @@ export default function ViewEstudiantes() {
         apellidos: formApellidos,
         grado: formGrado,
         nivel: formNivel,
-        apoderadoId: formApoderadoId,
-        apoderadoNombre: guardianNombre,
-        apoderadoSecundarioId: formApoderadoSecundarioId || undefined,
-        apoderadoSecundarioNombre: guardianSecundarioNombre || undefined
+        apoderadoNombre,
+        apoderadoSecundarioNombre
       });
       setMensajeExito("Estudiante actualizado correctamente.");
     } else {
@@ -114,10 +104,9 @@ export default function ViewEstudiantes() {
         apellidos: formApellidos,
         grado: formGrado,
         nivel: formNivel,
-        apoderadoId: formApoderadoId,
-        apoderadoNombre: guardianNombre,
-        apoderadoSecundarioId: formApoderadoSecundarioId || undefined,
-        apoderadoSecundarioNombre: guardianSecundarioNombre || undefined,
+        apoderadoId: "",
+        apoderadoNombre,
+        apoderadoSecundarioNombre,
         estado: "Activo"
       });
       setMensajeExito("Estudiante registrado con éxito.");
@@ -412,42 +401,25 @@ export default function ViewEstudiantes() {
               </div>
 
               <div>
-                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Apoderado / Tutor Asociado</label>
-                <select
-                  value={formApoderadoId}
-                  onChange={(e) => setFormApoderadoId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-emerald-500 focus:bg-white"
-                >
-                  {apoderados.map((ap) => (
-                    <option key={ap.id} value={ap.id}>
-                      {ap.nombres} {ap.apellidos}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Si el apoderado no existe, regístrelo previamente en el módulo "Apoderados".
-                </p>
+                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Apoderado / Tutor</label>
+                <input
+                  type="text"
+                  value={formApoderadoNombre}
+                  onChange={(e) => setFormApoderadoNombre(e.target.value)}
+                  placeholder="Ej. Roxana Rentería"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                />
               </div>
 
               <div>
                 <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Apoderado Secundario (Opcional)</label>
-                <select
-                  value={formApoderadoSecundarioId}
-                  onChange={(e) => setFormApoderadoSecundarioId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-emerald-500 focus:bg-white"
-                >
-                  <option value="">-- Sin apoderado secundario --</option>
-                  {apoderados
-                    .filter(ap => ap.id !== formApoderadoId)
-                    .map((ap) => (
-                      <option key={ap.id} value={ap.id}>
-                        {ap.nombres} {ap.apellidos}
-                      </option>
-                    ))}
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Seleccione un apoderado de respaldo o contacto de emergencia secundario de la lista de apoderados.
-                </p>
+                <input
+                  type="text"
+                  value={formApoderadoSecundarioNombre}
+                  onChange={(e) => setFormApoderadoSecundarioNombre(e.target.value)}
+                  placeholder="Contacto de respaldo (opcional)"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                />
               </div>
 
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
@@ -517,18 +489,6 @@ export default function ViewEstudiantes() {
                 <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold mb-1.5">Apoderado Autorizado</span>
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 flex flex-col gap-1">
                   <span className="text-xs font-bold text-slate-700">{estudianteSeleccionado.apoderadoNombre}</span>
-                  {(() => {
-                    const parent = apoderados.find(ap => ap.id === estudianteSeleccionado.apoderadoId);
-                    if (parent) {
-                      return (
-                        <div className="flex flex-col gap-0.5 text-[10px] text-slate-400 font-medium">
-                          <span>Teléfono: {parent.telefono}</span>
-                          <span>Correo: {parent.correo}</span>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
                   {estudianteSeleccionado.apoderadoSecundarioNombre && (
                     <div className="mt-2.5 pt-2.5 border-t border-slate-150 flex flex-col gap-0.5">
                       <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Contacto de Respaldo Secundario</span>
