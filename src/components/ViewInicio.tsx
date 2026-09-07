@@ -12,10 +12,6 @@ import {
   AlertTriangle,
   ClipboardCheck,
   BellRing,
-  ArrowUpRight,
-  TrendingUp,
-  FilePlus,
-  UserPlus,
   PackageCheck,
   ChevronRight,
   Sparkles
@@ -69,20 +65,55 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
     { name: "Sin Stock", value: utilesSinStock, color: "#ef4444" } // rose-500
   ];
 
-  // 3. Chart 2: Útiles recibidos por mes (Bar Chart)
-  const dataRecibidosPorMes: { mes: string; cantidad: number }[] = [];
+  // ---- Datos reales para los gráficos (a partir de movimientos y útiles) ----
+  const NOMBRES_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const ahora = new Date();
+  const meses6: { key: string; label: string }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+    meses6.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: NOMBRES_MES[d.getMonth()]
+    });
+  }
+  const sumaMes = (tipo: string, key: string) =>
+    movimientos
+      .filter(m => m.tipo === tipo && (m.fecha || "").substring(0, 7) === key)
+      .reduce((s, m) => s + m.cantidad, 0);
 
-  // 4. Chart 3: Productos con mayor consumo
-  const dataMayorConsumo: { name: string; consumo: number }[] = [];
+  // Chart 2: Útiles recibidos por mes (entradas al almacén)
+  const dataRecibidosPorMes = meses6.map(mm => ({ mes: mm.label, cantidad: sumaMes("Entrada", mm.key) }));
 
-  // 5. Chart 4: Proyección de Demanda (Line Chart)
-  const dataProyeccion: { name: string; actual: number; proyectado: number }[] = [];
+  // Chart 3: Productos con mayor consumo (salidas por útil, top 5)
+  const consumoPorUtil: { [nombre: string]: number } = {};
+  movimientos.filter(m => m.tipo === "Salida").forEach(m => {
+    consumoPorUtil[m.utilNombre] = (consumoPorUtil[m.utilNombre] || 0) + m.cantidad;
+  });
+  const dataMayorConsumo = Object.entries(consumoPorUtil)
+    .map(([name, consumo]) => ({ name, consumo }))
+    .sort((a, b) => b.consumo - a.consumo)
+    .slice(0, 5);
 
-  // 6. Chart 5: Evolución de Entradas y Salidas
-  const dataEvolucion: { mes: string; entradas: number; salidas: number }[] = [];
+  // Chart 4: Proyección de Demanda (stock actual vs demanda estimada por útil)
+  const dataProyeccion = utiles.slice(0, 6).map(u => {
+    const salidasU = movimientos.filter(m => m.tipo === "Salida" && m.utilId === u.id);
+    const porMesU: { [k: string]: number } = {};
+    salidasU.forEach(m => {
+      const k = (m.fecha || "").substring(0, 7);
+      porMesU[k] = (porMesU[k] || 0) + m.cantidad;
+    });
+    const mesesConDatos = Object.keys(porMesU).length;
+    const totalSal = salidasU.reduce((s, m) => s + m.cantidad, 0);
+    const proyectado = mesesConDatos > 0 ? Math.round(totalSal / mesesConDatos) : 0;
+    return { name: u.nombre, actual: u.stockActual, proyectado };
+  });
 
-  // Colors for Custom Styling
-  const COLORS = ["#10b981", "#f59e0b", "#ef4444"];
+  // Chart 5: Evolución de Entradas y Salidas (por mes)
+  const dataEvolucion = meses6.map(mm => ({
+    mes: mm.label,
+    entradas: sumaMes("Entrada", mm.key),
+    salidas: sumaMes("Salida", mm.key)
+  }));
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#f0f4f8]">
@@ -239,7 +270,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h4 className="font-bold text-slate-800 text-sm">Útiles Recibidos por Mes</h4>
-              <p className="text-[11px] text-slate-400 mt-0.5">Volumen de entrega de útiles por parte de los apoderados</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Volumen de entrega de útiles por parte de las familias</p>
             </div>
             <span className="text-[10px] bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded font-bold uppercase">Entregas</span>
           </div>
@@ -256,7 +287,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
                 />
                 <Bar dataKey="cantidad" name="Útiles Recibidos" fill="#c4b5fd" radius={[6, 6, 0, 0]}>
                   {dataRecibidosPorMes.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.mes === "Mar" ? "#10b981" : "#a7f3d0"} />
+                    <Cell key={`cell-${index}`} fill="#a7f3d0" />
                   ))}
                 </Bar>
               </BarChart>
@@ -295,7 +326,7 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                Proyección Inteligente de Demanda
+                Proyección de Demanda
                 <Sparkles className="w-4 h-4 text-emerald-600 animate-pulse" />
               </h4>
               <p className="text-[11px] text-slate-400 mt-0.5">Stock disponible actual vs Demanda proyectada (Próx. mes)</p>
@@ -351,11 +382,11 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
 
       </div>
 
-      {/* 4. Bottom Row: Activities & Quick Accesses */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* 4. Bottom Row: Actividades Recientes (ancho completo) */}
+      <div className="grid grid-cols-1 gap-6">
 
         {/* Recent Activities */}
-        <div className="glass-card p-6 lg:col-span-8 flex flex-col">
+        <div className="glass-card p-6 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h4 className="font-bold text-slate-800 text-sm">Actividades Recientes de Inventario</h4>
@@ -370,12 +401,17 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
           </div>
 
           <div className="flex-1 space-y-4">
-            {movimientos.slice(0, 4).map((mov, i) => (
+            {movimientos.length === 0 && (
+              <div className="text-[11px] text-slate-400 font-bold text-center py-6">
+                Aún no hay movimientos de inventario registrados.
+              </div>
+            )}
+            {movimientos.slice(0, 5).map((mov, i) => (
               <div key={i} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-colors duration-200">
                 <div className="flex items-center gap-3.5">
                   <div className={`p-2 rounded-xl border ${mov.tipo === "Entrada"
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                      : "bg-rose-50 text-rose-700 border-rose-100"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                    : "bg-rose-50 text-rose-700 border-rose-100"
                     }`}>
                     <PackageCheck className="w-4 h-4" />
                   </div>
@@ -399,65 +435,6 @@ export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Quick Access Actions */}
-        <div className="glass-card p-6 lg:col-span-4 flex flex-col justify-between">
-          <div>
-            <h4 className="font-bold text-slate-800 text-sm mb-1">Accesos Rápidos</h4>
-            <p className="text-[11px] text-slate-400 font-medium mb-4">Acciones inmediatas autorizadas para tu perfil</p>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              onClick={() => setVistaActiva("recepcion")}
-              className="w-full flex items-center justify-between p-3.5 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-900 font-semibold text-xs rounded-2xl border border-emerald-100 transition-all duration-200"
-            >
-              <div className="flex items-center gap-2.5">
-                <FilePlus className="w-4 h-4 text-emerald-600" />
-                <span>Registrar Recepción de Apoderado</span>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-            </button>
-
-            <button
-              onClick={() => setVistaActiva("estudiantes")}
-              className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 text-slate-700 font-semibold text-xs rounded-2xl border border-slate-150 transition-all duration-200"
-            >
-              <div className="flex items-center gap-2.5">
-                <UserPlus className="w-4 h-4 text-slate-500" />
-                <span>Matricular / Registrar Estudiante</span>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-slate-400" />
-            </button>
-
-            <button
-              onClick={() => setVistaActiva("utiles")}
-              className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 text-slate-700 font-semibold text-xs rounded-2xl border border-slate-150 transition-all duration-200"
-            >
-              <div className="flex items-center gap-2.5">
-                <Package className="w-4 h-4 text-slate-500" />
-                <span>Ingresar Nuevo Útil Escolar</span>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-slate-400" />
-            </button>
-
-            <button
-              onClick={() => setVistaActiva("prediccion")}
-              className="w-full flex items-center justify-between p-3.5 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-900 font-bold text-xs rounded-2xl border border-indigo-100 transition-all duration-200"
-            >
-              <div className="flex items-center gap-2.5">
-                <TrendingUp className="w-4 h-4 text-indigo-600 animate-pulse" />
-                <span>Ejecutar Predicción IA de Stock</span>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-indigo-500" />
-            </button>
-          </div>
-
-          <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center gap-3 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
-            <span>Actualización en tiempo real activa.</span>
           </div>
         </div>
 

@@ -78,15 +78,14 @@ export default function ViewUsuarios() {
       case "Administrador":
         return "Acceso total e irrestricto a todos los módulos, configuración general, gestión de almacén, base de datos y administración de usuarios.";
       case "Secretaria":
-        return "Gestión de matrículas (Estudiantes), registro de apoderados, control de recepciones, listas de útiles y consulta de stock.";
-      default:
+        return "Gestión de matrículas (Estudiantes), control de recepciones, listas de útiles y consulta de stock."; default:
         return "Sin permisos asignados.";
     }
   };
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8] text-xs font-semibold">
-      
+
       {mensajeExito && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fade-in">
           <Users className="w-5 h-5 text-emerald-600" />
@@ -122,11 +121,10 @@ export default function ViewUsuarios() {
           return (
             <div
               key={usr.id}
-              className={`glass-card p-6 flex flex-col justify-between gap-4 relative transition-all duration-200 ${
-                esMismoUsuario ? "ring-2 ring-emerald-500/20 bg-emerald-50/5 border-l-4 border-l-emerald-600" : "border-l-4 border-l-slate-400"
-              }`}
+              className={`glass-card p-6 flex flex-col justify-between gap-4 relative transition-all duration-200 ${esMismoUsuario ? "ring-2 ring-emerald-500/20 bg-emerald-50/5 border-l-4 border-l-emerald-600" : "border-l-4 border-l-slate-400"
+                }`}
             >
-              
+
               {/* Top Row: Info and state badge */}
               <div className="flex justify-between items-start">
                 <div className="flex gap-3">
@@ -147,9 +145,8 @@ export default function ViewUsuarios() {
                   </div>
                 </div>
 
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                  usr.estado === "Activo" ? "bg-emerald-100 text-emerald-800" : "bg-slate-150 text-slate-500"
-                }`}>
+                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${usr.estado === "Activo" ? "bg-emerald-100 text-emerald-800" : "bg-slate-150 text-slate-500"
+                  }`}>
                   {usr.estado}
                 </span>
               </div>
