@@ -42,7 +42,7 @@ interface AppContextType {
   eliminarListaUtil: (id: string) => void;
 
   registrarEntregaRecepcion: (recepId: string, entregados: { [utilId: string]: number }, observaciones: string, recibidoPor: string) => void;
-  registrarNuevaRecepcion: (recep: Omit<Recepcion, "id">) => void;
+  registrarNuevaRecepcion: (recep: Omit<Recepcion, "id">) => Promise<Recepcion | null>;
 
   registrarNuevoMovimiento: (mov: Omit<Movimiento, "id" | "fecha">) => void;
   resolverAlerta: (alertaId: string) => void;
@@ -121,8 +121,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setListas(listasData as ListaUtil[]);
       }
 
-      // Movimientos
-      const { data: movimientosData, error: movimientosError } = await supabase.from("movimientos").select("*").order("id", { ascending: false });
+      // Movimientos (ordenados por fecha, más reciente primero)
+      const { data: movimientosData, error: movimientosError } = await supabase.from("movimientos").select("*").order("fecha", { ascending: false });
       if (movimientosError) {
         console.error("Error cargando movimientos desde Supabase:", movimientosError.message);
       } else if (movimientosData) {
@@ -162,7 +162,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       codigo: nuevoCodigo
     };
 
-    // 1. Guarda el estudiante en Supabase
+    // Guarda el estudiante en Supabase (ya NO se crea recepción automática)
     const { error } = await supabase.from("estudiantes").insert(nuevoEst);
     if (error) {
       console.error("Error registrando estudiante:", error.message);
@@ -170,35 +170,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     setEstudiantes(prev => [...prev, nuevoEst]);
-
-    // 2. Genera recepción pendiente si existe lista para el grado (también en Supabase)
-    const listaGrado = listas.find(l => l.grado === est.grado);
-    if (listaGrado) {
-      const nuevaRecepcion: Recepcion = {
-        id: `R${String(recepciones.length + 1).padStart(3, "0")}`,
-        estudianteId: nuevoId,
-        estudianteNombre: `${est.nombres} ${est.apellidos}`,
-        apoderadoId: est.apoderadoId,
-        apoderadoNombre: est.apoderadoNombre,
-        grado: est.grado,
-        nivel: est.nivel,
-        fechaRecepcion: "-",
-        items: listaGrado.items.map(it => ({
-          utilId: it.utilId,
-          utilNombre: it.utilNombre,
-          cantidadEsperada: it.cantidadRequerida,
-          cantidadEntregada: 0
-        })),
-        estado: "Pendiente",
-        recibidoPor: "-"
-      };
-      const { error: recErr } = await supabase.from("recepciones").insert(nuevaRecepcion);
-      if (recErr) {
-        console.error("Error creando recepción pendiente:", recErr.message);
-      } else {
-        setRecepciones(prev => [...prev, nuevaRecepcion]);
-      }
-    }
   };
 
   const editarEstudiante = async (est: Estudiante) => {
@@ -377,10 +348,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const estado = completo ? "Completo" : (vacio ? "Pendiente" : "Incompleto");
 
     // Prepara actualizaciones de stock y nuevos movimientos por lo recién entregado
+    // (los movimientos van SIN id: Supabase se lo asigna solo)
     const stockUpdates: { utilId: string; nuevoStock: number }[] = [];
-    const nuevosMovs: Movimiento[] = [];
+    const nuevosMovs: Omit<Movimiento, "id">[] = [];
 
-    nuevosItems.forEach((item, i) => {
+    nuevosItems.forEach((item) => {
       const anterior = rc.items.find(it => it.utilId === item.utilId)?.cantidadEntregada ?? 0;
       const diferencia = item.cantidadEntregada - anterior;
       if (diferencia > 0) {
@@ -390,7 +362,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const stockRes = stockAnt + diferencia;
           stockUpdates.push({ utilId: item.utilId, nuevoStock: stockRes });
           nuevosMovs.push({
-            id: `M${String(movimientos.length + i + 1).padStart(3, "0")}`,
             tipo: "Entrada",
             utilId: item.utilId,
             utilNombre: item.utilNombre,
@@ -424,11 +395,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // 2. Guarda los movimientos generados
+    // 2. Guarda los movimientos generados (Supabase asigna los IDs y nos los devuelve)
+    let movsCreados: Movimiento[] = [];
     if (nuevosMovs.length > 0) {
-      const { error: movErr } = await supabase.from("movimientos").insert(nuevosMovs);
+      const { data: movData, error: movErr } = await supabase.from("movimientos").insert(nuevosMovs).select();
       if (movErr) {
         console.error("Error guardando movimientos de la entrega:", movErr.message);
+      } else if (movData) {
+        movsCreados = movData as Movimiento[];
       }
     }
 
@@ -444,8 +418,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Actualiza el estado local
     setRecepciones(prev => prev.map(r => r.id === recepId ? recepActualizada : r));
-    if (nuevosMovs.length > 0) {
-      setMovimientos(prev => [...nuevosMovs, ...prev]);
+    if (movsCreados.length > 0) {
+      setMovimientos(prev => [...movsCreados, ...prev]);
     }
     setUtiles(prev => prev.map(u => {
       const su = stockUpdates.find(s => s.utilId === u.id);
@@ -453,41 +427,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }));
   };
 
-  const registrarNuevaRecepcion = async (recep: Omit<Recepcion, "id">) => {
-    const nuevoId = `R${String(recepciones.length + 1).padStart(3, "0")}`;
-    const nuevaRecep: Recepcion = {
-      ...recep,
-      id: nuevoId
-    };
-
-    const { error } = await supabase.from("recepciones").insert(nuevaRecep);
+  const registrarNuevaRecepcion = async (recep: Omit<Recepcion, "id">): Promise<Recepcion | null> => {
+    // Insertamos SIN id: Supabase genera un identificador único automáticamente
+    const { data, error } = await supabase.from("recepciones").insert(recep).select().single();
     if (error) {
       console.error("Error registrando recepción:", error.message);
       alert("No se pudo guardar la recepción en la base de datos: " + error.message);
-      return;
+      return null;
     }
-    setRecepciones(prev => [nuevaRecep, ...prev]);
+    const creada = data as Recepcion;
+    setRecepciones(prev => [creada, ...prev]);
+    return creada;
   };
 
   const registrarNuevoMovimiento = async (mov: Omit<Movimiento, "id" | "fecha">) => {
     const hoyStr = new Date().toISOString().split("T")[0];
     const horaStr = new Date().toTimeString().split(" ")[0].substring(0, 5);
-    const nuevoId = `M${String(movimientos.length + 1).padStart(3, "0")}`;
+    const movConFecha = { ...mov, fecha: `${hoyStr} ${horaStr}` };
 
-    const nuevoMov: Movimiento = {
-      ...mov,
-      id: nuevoId,
-      fecha: `${hoyStr} ${horaStr}`
-    };
-
-    // 1. Guarda el movimiento en Supabase
-    const { error } = await supabase.from("movimientos").insert(nuevoMov);
+    // 1. Guarda el movimiento en Supabase (el ID lo genera la base)
+    const { data, error } = await supabase.from("movimientos").insert(movConFecha).select().single();
     if (error) {
       console.error("Error registrando movimiento:", error.message);
       alert("No se pudo guardar el movimiento en la base de datos: " + error.message);
       return;
     }
-    setMovimientos(prev => [nuevoMov, ...prev]);
+    if (data) setMovimientos(prev => [data as Movimiento, ...prev]);
 
     // 2. Actualiza el stock del útil afectado (también en Supabase)
     const { error: uErr } = await supabase.from("utiles")
