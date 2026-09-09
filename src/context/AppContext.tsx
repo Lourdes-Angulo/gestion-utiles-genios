@@ -428,7 +428,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const registrarNuevaRecepcion = async (recep: Omit<Recepcion, "id">): Promise<Recepcion | null> => {
-    // Insertamos SIN id: Supabase genera un identificador único automáticamente
+    const hoyStr = new Date().toISOString().split("T")[0];
+    const horaStr = new Date().toTimeString().split(" ")[0].substring(0, 5);
+
+    // 1. Inserta la recepción (Supabase genera el id único)
     const { data, error } = await supabase.from("recepciones").insert(recep).select().single();
     if (error) {
       console.error("Error registrando recepción:", error.message);
@@ -437,6 +440,59 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
     const creada = data as Recepcion;
     setRecepciones(prev => [creada, ...prev]);
+
+    // 2. Por cada útil entregado (> 0): genera movimiento de entrada y suma al stock
+    const stockUpdates: { utilId: string; nuevoStock: number }[] = [];
+    const nuevosMovs: Omit<Movimiento, "id">[] = [];
+
+    creada.items.forEach((item) => {
+      if (item.cantidadEntregada > 0) {
+        const utilObj = utiles.find(u => u.id === item.utilId);
+        if (utilObj) {
+          const stockAnt = utilObj.stockActual;
+          const stockRes = stockAnt + item.cantidadEntregada;
+          stockUpdates.push({ utilId: item.utilId, nuevoStock: stockRes });
+          nuevosMovs.push({
+            tipo: "Entrada",
+            utilId: item.utilId,
+            utilNombre: item.utilNombre,
+            cantidad: item.cantidadEntregada,
+            fecha: `${hoyStr} ${horaStr}`,
+            responsable: creada.recibidoPor,
+            motivo: `Entrega de útiles - Estudiante ${creada.estudianteNombre}`,
+            stockAnterior: stockAnt,
+            stockResultante: stockRes
+          });
+        }
+      }
+    });
+
+    // Guarda los movimientos generados (Supabase asigna los IDs)
+    if (nuevosMovs.length > 0) {
+      const { data: movData, error: movErr } = await supabase.from("movimientos").insert(nuevosMovs).select();
+      if (movErr) {
+        console.error("Error guardando movimientos de la recepción:", movErr.message);
+      } else if (movData) {
+        setMovimientos(prev => [...(movData as Movimiento[]), ...prev]);
+      }
+    }
+
+    // Actualiza el stock de cada útil afectado
+    for (const su of stockUpdates) {
+      const { error: uErr } = await supabase.from("utiles")
+        .update({ stockActual: su.nuevoStock })
+        .eq("id", su.utilId);
+      if (uErr) {
+        console.error("Error actualizando stock del útil:", uErr.message);
+      }
+    }
+    if (stockUpdates.length > 0) {
+      setUtiles(prev => prev.map(u => {
+        const su = stockUpdates.find(s => s.utilId === u.id);
+        return su ? { ...u, stockActual: su.nuevoStock } : u;
+      }));
+    }
+
     return creada;
   };
 
