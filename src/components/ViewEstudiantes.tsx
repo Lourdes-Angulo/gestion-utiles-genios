@@ -210,7 +210,7 @@ export default function ViewEstudiantes() {
                 <th className="p-5">Estudiante</th>
                 <th className="p-5">Nivel</th>
                 <th className="p-5">Grado</th>
-                <th className="p-5">Apoderado Responsable</th>
+
                 <th className="p-5 text-center">Estado</th>
                 <th className="p-5 pr-8 text-right">Acciones</th>
               </tr>
@@ -248,9 +248,7 @@ export default function ViewEstudiantes() {
                     <td className="p-5 font-semibold text-slate-600">
                       {est.grado}
                     </td>
-                    <td className="p-5 font-semibold text-slate-600">
-                      {est.apoderadoNombre}
-                    </td>
+
                     <td className="p-5 text-center">
                       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${est.estado === "Activo"
                         ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
@@ -299,7 +297,7 @@ export default function ViewEstudiantes() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
+                  <td colSpan={6} className="p-8 text-center text-slate-400 font-bold">
                     No se encontraron estudiantes con los filtros especificados.
                   </td>
                 </tr>
