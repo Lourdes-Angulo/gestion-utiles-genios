@@ -174,7 +174,7 @@ export default function ViewReportes() {
                       <th className="p-4">Ubicación</th>
                       <th className="p-4 text-center">Mínimo</th>
                       <th className="p-4 text-center">Actual</th>
-                      <th className="p-4 text-center">Diferencia</th>
+
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
@@ -191,9 +191,7 @@ export default function ViewReportes() {
                           <td className={`p-4 text-center font-black ${esBajo ? "text-rose-500" : "text-emerald-600"}`}>
                             {ut.stockActual}
                           </td>
-                          <td className={`p-4 text-center font-bold font-mono ${diferencia < 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                            {diferencia > 0 ? `+${diferencia}` : diferencia}
-                          </td>
+                          
                         </tr>
                       );
                     })}
