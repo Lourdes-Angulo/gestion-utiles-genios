@@ -376,18 +376,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
+    const nuevoNumeroEntregas = (rc.numeroEntregas ?? 0) + 1;
     const recepActualizada: Recepcion = {
       ...rc,
       items: nuevosItems,
       estado,
       observaciones,
       fechaRecepcion: hoyStr,
-      recibidoPor
+      recibidoPor,
+      numeroEntregas: nuevoNumeroEntregas
     };
 
     // 1. Actualiza la recepción en Supabase
     const { error: recErr } = await supabase.from("recepciones")
-      .update({ items: nuevosItems, estado, observaciones, fechaRecepcion: hoyStr, recibidoPor })
+      .update({ items: nuevosItems, estado, observaciones, fechaRecepcion: hoyStr, recibidoPor, numeroEntregas: nuevoNumeroEntregas })
       .eq("id", recepId);
     if (recErr) {
       console.error("Error actualizando recepción:", recErr.message);

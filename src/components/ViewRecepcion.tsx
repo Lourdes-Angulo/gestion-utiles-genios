@@ -10,16 +10,11 @@ import {
   CheckSquare,
   Search,
   Filter,
-  Calendar,
   AlertCircle,
   CheckCircle2,
   HelpCircle,
-  FileText,
-  User,
   PlusCircle,
   Printer,
-  ChevronRight,
-  Info,
   X,
   Check
 } from "lucide-react";
@@ -116,7 +111,8 @@ export default function ViewRecepcion() {
       estado,
       observaciones: nuevoRecepObservaciones,
       recibidoPor: `${usuarioActivo.nombre} (${usuarioActivo.rol})`,
-      entregadoPor: nuevoRecepEntregadoPor
+      entregadoPor: nuevoRecepEntregadoPor,
+      numeroEntregas: items.some(it => it.cantidadEntregada > 0) ? 1 : 0
     };
 
     setGuardandoRecepcion(true);
@@ -145,11 +141,6 @@ export default function ViewRecepcion() {
     setFormObservaciones(rc.observaciones || "");
     setFormEntregadoPor(rc.entregadoPor || "");
     setMostrarModalRegistrar(true);
-  };
-
-  const handleVerConstancia = (rc: Recepcion) => {
-    setRecepcionSeleccionada(rc);
-    setMostrarConstancia(true);
   };
 
   const handleGuardarEntrega = (e: React.FormEvent) => {
@@ -251,7 +242,6 @@ export default function ViewRecepcion() {
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
             {recepcionesFiltradas.length > 0 ? (
               recepcionesFiltradas.map((rc) => {
-                const totalItems = rc.items.length;
                 const totalEntregados = rc.items.reduce((sum, it) => sum + it.cantidadEntregada, 0);
                 const totalEsperados = rc.items.reduce((sum, it) => sum + it.cantidadEsperada, 0);
 
@@ -282,7 +272,7 @@ export default function ViewRecepcion() {
 
                       <div>
                         <h4 className="font-bold text-slate-800 text-xs">{rc.estudianteNombre}</h4>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Apoderado: {rc.apoderadoNombre}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Entregado por: {rc.entregadoPor || "-"}</p>
 
                         <div className="flex items-center gap-2 mt-2">
                           <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
@@ -350,10 +340,6 @@ export default function ViewRecepcion() {
               <div className="p-6 space-y-5">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-1 text-xs text-slate-600">
                   <div className="flex justify-between">
-                    <span className="text-slate-400 font-bold">Apoderado:</span>
-                    <span className="text-slate-800 font-bold">{recepcionSeleccionada.apoderadoNombre}</span>
-                  </div>
-                  <div className="flex justify-between mt-1">
                     <span className="text-slate-400 font-bold">Última Fecha:</span>
                     <span className="text-slate-800 font-bold font-mono">{recepcionSeleccionada.fechaRecepcion}</span>
                   </div>
@@ -364,6 +350,10 @@ export default function ViewRecepcion() {
                   <div className="flex justify-between mt-1">
                     <span className="text-slate-400 font-bold">Cotejado por:</span>
                     <span className="text-slate-800 font-bold">{recepcionSeleccionada.recibidoPor}</span>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-slate-400 font-bold">N° de entregas:</span>
+                    <span className="text-slate-800 font-bold">{recepcionSeleccionada.numeroEntregas ?? 0}</span>
                   </div>
                 </div>
 
@@ -570,32 +560,28 @@ export default function ViewRecepcion() {
 
               <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-150">
                 <div>
-                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Código Alumno:</span>
-                  <span className="text-slate-800 font-bold block">EST-2026-00{recepcionSeleccionada.id.substring(1)}</span>
-                </div>
-                <div>
                   <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Fecha Emisión:</span>
                   <span className="text-slate-800 font-bold block font-mono">{recepcionSeleccionada.fechaRecepcion}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Estado Entrega:</span>
+                  <span className="text-slate-800 font-bold block uppercase">{recepcionSeleccionada.estado}</span>
                 </div>
                 <div className="mt-2">
                   <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Estudiante:</span>
                   <span className="text-slate-800 font-bold block">{recepcionSeleccionada.estudianteNombre}</span>
                 </div>
                 <div className="mt-2">
-                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Apoderado:</span>
-                  <span className="text-slate-800 font-bold block">{recepcionSeleccionada.apoderadoNombre}</span>
-                </div>
-                <div className="mt-2">
                   <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Grado y Sección:</span>
                   <span className="text-slate-800 font-bold block">{recepcionSeleccionada.grado} ({recepcionSeleccionada.nivel})</span>
                 </div>
                 <div className="mt-2">
-                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Estado Entrega:</span>
-                  <span className="text-slate-800 font-bold block uppercase">{recepcionSeleccionada.estado}</span>
-                </div>
-                <div className="mt-2">
                   <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Entregado por:</span>
                   <span className="text-slate-800 font-bold block">{recepcionSeleccionada.entregadoPor || "-"}</span>
+                </div>
+                <div className="mt-2">
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Cotejado por:</span>
+                  <span className="text-slate-800 font-bold block">{recepcionSeleccionada.recibidoPor}</span>
                 </div>
               </div>
 
@@ -631,7 +617,7 @@ export default function ViewRecepcion() {
 
               {recepcionSeleccionada.observaciones && (
                 <div className="p-3 bg-slate-50 border border-slate-200 text-[10px] text-slate-500 rounded-lg">
-                  <strong className="text-slate-800 block mb-1">Notas / Compromisos del Apoderado:</strong>
+                  <strong className="text-slate-800 block mb-1">Notas / Observaciones:</strong>
                   {recepcionSeleccionada.observaciones}
                 </div>
               )}
@@ -640,8 +626,8 @@ export default function ViewRecepcion() {
               <div className="grid grid-cols-2 gap-8 pt-10 text-center">
                 <div className="flex flex-col items-center">
                   <div className="w-40 border-b border-slate-300 h-12" />
-                  <span className="text-[10px] text-slate-800 font-bold mt-2">{recepcionSeleccionada.apoderadoNombre}</span>
-                  <span className="text-[8px] text-slate-400 uppercase font-bold mt-0.5">Firma del Apoderado</span>
+                  <span className="text-[10px] text-slate-800 font-bold mt-2">{recepcionSeleccionada.entregadoPor || "-"}</span>
+                  <span className="text-[8px] text-slate-400 uppercase font-bold mt-0.5">Firma de quien entrega</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <div className="w-40 border-b border-slate-300 h-12 flex items-end justify-center">

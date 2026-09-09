@@ -69,6 +69,7 @@ export interface Recepcion {
   observaciones?: string;
   recibidoPor: string;
   entregadoPor?: string;
+  numeroEntregas?: number;
 }
 
 export interface ControlStockItem {
