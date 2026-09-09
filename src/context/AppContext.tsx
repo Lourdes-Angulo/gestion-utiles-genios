@@ -69,6 +69,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [predicciones, setPredicciones] = useState<Prediccion[]>(INITIAL_PREDICTIONS);
   const [alertas, setAlertas] = useState<Alerta[]>(INITIAL_ALERTS);
   const [usuarios, setUsuarios] = useState<Usuario[]>(INITIAL_USERS);
+  const [datosListos, setDatosListos] = useState(false);
   const [usuarioActivo, setUsuarioActivo] = useState<Usuario>(() => {
     const cachedId = typeof window !== "undefined" ? localStorage.getItem("sesion_colegio_usuario_id") : null;
     if (cachedId) {
@@ -144,9 +145,70 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (recepcionesData) {
         setRecepciones(recepcionesData as Recepcion[]);
       }
+
+      // Todos los datos cargados: habilita el recálculo automático de alertas
+      setDatosListos(true);
     };
     cargarDatos();
   }, []);
+
+  // Recalcula las alertas automáticamente según el stock real
+  const reconciliarAlertas = async () => {
+    const activas = alertas.filter(a => !a.resuelta);
+
+    // Alertas cuyo útil ya se recuperó (o fue desactivado / no existe) -> resolver
+    const aResolver = activas.filter(a => {
+      const u = utiles.find(x => x.id === a.utilId);
+      return !u || u.estado !== "Activo" || u.stockActual > u.stockMinimo;
+    });
+
+    // Útiles bajos/sin stock que aún no tienen alerta activa -> crear
+    const conAlerta = new Set(activas.map(a => a.utilId));
+    const utilesBajos = utiles.filter(u =>
+      u.estado === "Activo" &&
+      u.stockActual <= u.stockMinimo &&
+      !conAlerta.has(u.id)
+    );
+
+    if (aResolver.length === 0 && utilesBajos.length === 0) return;
+
+    // Resolver en Supabase
+    for (const a of aResolver) {
+      await supabase.from("alertas").update({ resuelta: true }).eq("id", a.id);
+    }
+
+    // Crear en Supabase
+    const nuevas: Alerta[] = utilesBajos.map((u, i) => ({
+      id: `AL-${Date.now()}-${i}`,
+      tipo: u.stockActual === 0 ? "proximo_agotarse" : "stock_bajo",
+      prioridad: u.stockActual === 0 ? "Alta" : "Media",
+      fecha: new Date().toISOString().split("T")[0],
+      utilId: u.id,
+      utilNombre: u.nombre,
+      descripcion: u.stockActual === 0
+        ? "El producto se encuentra sin stock."
+        : `Stock actual (${u.stockActual}) menor al stock mínimo (${u.stockMinimo}).`,
+      accionRecomendada: `Adquirir al menos ${u.stockMinimo * 2} unidades.`,
+      resuelta: false
+    }));
+    if (nuevas.length > 0) {
+      await supabase.from("alertas").insert(nuevas);
+    }
+
+    // Actualiza el estado local
+    const idsResueltas = new Set(aResolver.map(a => a.id));
+    setAlertas(prev => [
+      ...nuevas,
+      ...prev.map(a => idsResueltas.has(a.id) ? { ...a, resuelta: true } : a)
+    ]);
+  };
+
+  // Recalcula al cargar y cada vez que cambia el stock (útiles)
+  useEffect(() => {
+    if (!datosListos) return;
+    reconciliarAlertas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [utiles, datosListos]);
 
   const cambiarUsuarioActivo = (id: string) => {
     const user = usuarios.find(u => u.id === id);
@@ -229,19 +291,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     setPredicciones(prev => [...prev, nuevaPred]);
 
-    // Check stock level for alerts
-    if (util.stockActual <= util.stockMinimo) {
-      crearAlerta({
-        tipo: util.stockActual === 0 ? "proximo_agotarse" : "stock_bajo",
-        prioridad: util.stockActual === 0 ? "Alta" : "Media",
-        utilId: nuevoId,
-        utilNombre: util.nombre,
-        descripcion: util.stockActual === 0
-          ? "El producto se encuentra sin stock."
-          : `Stock actual (${util.stockActual}) menor al stock mínimo (${util.stockMinimo}).`,
-        accionRecomendada: `Adquirir al menos ${util.stockMinimo * 2} unidades.`
-      });
-    }
   };
 
   const editarUtil = async (util: UtilEscolar) => {
@@ -255,22 +304,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     setUtiles(prev => prev.map(u => u.id === util.id ? util : u));
 
-    // Check stock level for alerts
-    if (util.stockActual <= util.stockMinimo) {
-      const existeAlerta = alertas.find(al => al.utilId === util.id && !al.resuelta);
-      if (!existeAlerta) {
-        crearAlerta({
-          tipo: util.stockActual === 0 ? "proximo_agotarse" : "stock_bajo",
-          prioridad: "Alta",
-          utilId: util.id,
-          utilNombre: util.nombre,
-          descripcion: util.stockActual === 0
-            ? "El producto se encuentra sin stock."
-            : `Stock actual (${util.stockActual}) menor al stock mínimo (${util.stockMinimo}).`,
-          accionRecomendada: `Adquirir al menos ${util.stockMinimo * 2} unidades.`
-        });
-      }
-    }
   };
 
   const desactivarUtil = async (id: string) => {
