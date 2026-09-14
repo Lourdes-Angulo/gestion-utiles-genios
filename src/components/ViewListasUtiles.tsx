@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { ListaUtil } from "../types";
 import {
@@ -18,6 +18,68 @@ import {
   X,
   PlusCircle
 } from "lucide-react";
+
+
+// Combobox: campo con búsqueda por texto + lista desplegable de útiles
+function UtilCombobox({
+  utiles,
+  value,
+  onChange
+}: {
+  utiles: { id: string; nombre: string; unidadMedida: string }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  const seleccionado = utiles.find(u => u.id === value);
+  const filtrados = utiles.filter(u =>
+    u.nombre.toLowerCase().includes(busqueda.toLowerCase())
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setAbierto(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        value={abierto ? busqueda : (seleccionado ? `${seleccionado.nombre} (${seleccionado.unidadMedida})` : "")}
+        onChange={(e) => { setBusqueda(e.target.value); setAbierto(true); }}
+        onFocus={() => { setBusqueda(""); setAbierto(true); }}
+        placeholder="Seleccionar útil..."
+        className="w-full bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 py-1.5 px-2.5 focus:outline-none focus:border-emerald-500"
+      />
+      {abierto && (
+        <div className="absolute z-30 mt-1 w-full max-h-44 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg">
+          {filtrados.length > 0 ? (
+            filtrados.map(u => (
+              <button
+                type="button"
+                key={u.id}
+                onClick={() => { onChange(u.id); setAbierto(false); setBusqueda(""); }}
+                className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50"
+              >
+                {u.nombre} ({u.unidadMedida})
+              </button>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-xs text-slate-400 font-semibold">No se encontró ningún útil.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ViewListasUtiles() {
   const {
@@ -48,12 +110,12 @@ export default function ViewListasUtiles() {
     setFormNivel("Primaria");
     setFormGrado("1er Grado");
     setFormAnio(configuracionColegio.anioEscolar);
-    setItemsForm([{ utilId: utiles[0]?.id || "", cantidadRequerida: 1 }]);
+    setItemsForm([{ utilId: "", cantidadRequerida: 1 }]);
     setMostrarModalCrear(true);
   };
 
   const handleAgregarItemForm = () => {
-    setItemsForm(prev => [...prev, { utilId: utiles[0]?.id || "", cantidadRequerida: 1 }]);
+    setItemsForm(prev => [...prev, { utilId: "", cantidadRequerida: 1 }]);
   };
 
   const handleQuitarItemForm = (idx: number) => {
@@ -76,6 +138,12 @@ export default function ViewListasUtiles() {
     e.preventDefault();
     if (itemsForm.length === 0) return;
 
+    // Cada material debe tener un útil seleccionado
+    if (itemsForm.some(it => !it.utilId)) {
+      alert("Selecciona un útil en cada material de la lista.");
+      return;
+    }
+
     const listaItems = itemsForm.map(it => {
       const utilObj = utiles.find(u => u.id === it.utilId);
       return {
@@ -96,7 +164,7 @@ export default function ViewListasUtiles() {
     guardarListaUtil(nuevaLista);
     setMostrarModalCrear(false);
     setMensajeExito("Lista de útiles configurada con éxito.");
-
+    
     // Auto-select the newly created or updated list
     const actualizadas = listas.find(l => l.grado === formGrado && l.nivel === formNivel);
     if (actualizadas) {
@@ -117,7 +185,7 @@ export default function ViewListasUtiles() {
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
-
+      
       {mensajeExito && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fade-in">
           <ClipboardList className="w-5 h-5 text-emerald-600" />
@@ -162,7 +230,7 @@ export default function ViewListasUtiles() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
+        
         {/* Left Side: List Selector */}
         <div className="lg:col-span-4 space-y-3">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2">Listas por Grado Académico</span>
@@ -176,14 +244,16 @@ export default function ViewListasUtiles() {
                 <button
                   key={lista.id}
                   onClick={() => setListaSeleccionada(lista)}
-                  className={`w-full text-left p-4.5 rounded-2xl border transition-all duration-200 flex items-center justify-between ${isSelected
-                    ? "bg-emerald-50 border-emerald-300 shadow-xs"
-                    : "glass-card hover:bg-slate-50/50"
-                    }`}
+                  className={`w-full text-left p-4.5 rounded-2xl border transition-all duration-200 flex items-center justify-between ${
+                    isSelected
+                      ? "bg-emerald-50 border-emerald-300 shadow-xs"
+                      : "glass-card hover:bg-slate-50/50"
+                  }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl border ${isSelected ? "bg-emerald-200/50 text-emerald-800 border-emerald-300" : "bg-slate-50 text-slate-500 border-slate-100"
-                      }`}>
+                    <div className={`p-2.5 rounded-xl border ${
+                      isSelected ? "bg-emerald-200/50 text-emerald-800 border-emerald-300" : "bg-slate-50 text-slate-500 border-slate-100"
+                    }`}>
                       <GraduationCap className="w-5 h-5" />
                     </div>
                     <div>
@@ -220,7 +290,7 @@ export default function ViewListasUtiles() {
         <div className="lg:col-span-8">
           {listaSeleccionada ? (
             <div className="glass-card overflow-hidden flex flex-col">
-
+              
               {/* Header Details */}
               <div className="p-6 bg-slate-50 border-b border-slate-150 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
@@ -330,8 +400,8 @@ export default function ViewListasUtiles() {
       {/* Modal: Crear / Modificar Lista */}
       {mostrarModalCrear && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-150 max-w-2xl w-full overflow-hidden animate-scale-up">
-            <div className="p-6 bg-slate-50 border-b border-slate-150 flex items-center justify-between">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-150 max-w-2xl w-full animate-scale-up">
+            <div className="p-6 bg-slate-50 border-b border-slate-150 flex items-center justify-between rounded-t-3xl">
               <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                 <ClipboardList className="w-5 h-5 text-emerald-600" />
                 Configurar Lista de Útiles Escolares ({formAnio})
@@ -417,19 +487,15 @@ export default function ViewListasUtiles() {
                   </button>
                 </div>
 
-                <div className="max-h-60 overflow-y-auto space-y-3 pr-2 scrollbar-thin">
+                <div className="space-y-3 pr-2">
                   {itemsForm.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
                       <div className="flex-1">
-                        <select
+                        <UtilCombobox
+                          utiles={utiles}
                           value={item.utilId}
-                          onChange={(e) => handleCambiarItemForm(idx, "utilId", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 py-1.5 px-2.5"
-                        >
-                          {utiles.map(u => (
-                            <option key={u.id} value={u.id}>{u.nombre} ({u.unidadMedida})</option>
-                          ))}
-                        </select>
+                          onChange={(id) => handleCambiarItemForm(idx, "utilId", id)}
+                        />
                       </div>
                       <div className="w-24">
                         <input
