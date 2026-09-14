@@ -5,6 +5,8 @@
 
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   FileText,
   FileSpreadsheet,
@@ -34,7 +36,7 @@ import {
 } from "recharts";
 
 export default function ViewReportes() {
-  const { recepciones, utiles, movimientos, predicciones } = useApp();
+  const { recepciones, utiles, movimientos, predicciones, configuracionColegio } = useApp();
 
   const [reporteActivo, setReporteActivo] = useState<"stock" | "entregas" | "faltantes" | "consumo">("stock");
   
@@ -75,16 +77,82 @@ export default function ViewReportes() {
     });
 
   const handleDescargar = (formato: "PDF" | "Excel") => {
-    setFormatoDescarga(formato);
-    setDescargando(true);
-    setDescargaExitosa(false);
+    // Otros formatos (Excel) mantienen el comportamiento anterior por ahora
+    if (formato !== "PDF") {
+      setFormatoDescarga(formato);
+      setDescargando(true);
+      setDescargaExitosa(false);
+      setTimeout(() => {
+        setDescargando(false);
+        setDescargaExitosa(true);
+        setTimeout(() => setDescargaExitosa(false), 2500);
+      }, 1800);
+      return;
+    }
 
-    // Simulate download processing
-    setTimeout(() => {
-      setDescargando(false);
-      setDescargaExitosa(true);
-      setTimeout(() => setDescargaExitosa(false), 2500);
-    }, 1800);
+    // === Generación de PDF real de la pestaña activa ===
+    const doc = new jsPDF();
+    const fecha = new Date().toLocaleDateString("es-PE");
+
+    // Encabezado del colegio
+    doc.setFontSize(14);
+    doc.setTextColor(16, 122, 87);
+    doc.text(configuracionColegio.nombre, 14, 18);
+    doc.setFontSize(9);
+    doc.setTextColor(120);
+    doc.text("Sistema de Gestión de Útiles Escolares", 14, 24);
+
+    // Definir título y datos según la pestaña activa
+    let titulo = "";
+    let head: string[][] = [];
+    const body: (string | number)[][] = [];
+
+    if (reporteActivo === "stock") {
+      titulo = "Reporte de Estado de Stock Físico";
+      head = [["Código", "Material Escolar", "Ubicación", "Mínimo", "Actual"]];
+      utiles.forEach(u => body.push([u.codigo, u.nombre, u.ubicación || "-", u.stockMinimo, u.stockActual]));
+    } else if (reporteActivo === "entregas") {
+      titulo = "Reporte General de Entregas por Alumno";
+      head = [["Estudiante", "Apoderado", "Grado", "Fecha", "Estado"]];
+      recepciones.forEach(r => body.push([r.estudianteNombre, r.apoderadoNombre || "-", r.grado, r.fechaRecepcion, r.estado]));
+    } else if (reporteActivo === "faltantes") {
+      titulo = "Reporte de Materiales Faltantes por Cobrar";
+      head = [["Estudiante", "Grado", "Apoderado", "Material", "Faltan"]];
+      listadoFaltantes.forEach(lf => {
+        lf.utiles.forEach((ut: { nombre: string; faltan: number }) => {
+          body.push([lf.estudiante, lf.grado, lf.apoderado || "-", ut.nombre, `${ut.faltan} u.`]);
+        });
+      });
+    } else {
+      titulo = "Resumen Analítico de Consumo";
+      head = [["Fecha", "Material / Útil", "Tipo", "Cant.", "Motivo"]];
+      movimientos.forEach(m => body.push([m.fecha, m.utilNombre, m.tipo, `${m.tipo === "Entrada" ? "+" : "-"}${m.cantidad}`, m.motivo]));
+    }
+
+    // Título del reporte + fecha
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.text(titulo, 14, 34);
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text(`Generado: ${fecha}`, 14, 39);
+
+    // Tabla
+    autoTable(doc, {
+      head,
+      body,
+      startY: 44,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [16, 122, 87], textColor: 255 },
+      alternateRowStyles: { fillColor: [245, 248, 250] }
+    });
+
+    const nombreArchivo = `Reporte-${reporteActivo}-${new Date().toISOString().split("T")[0]}.pdf`;
+    doc.save(nombreArchivo);
+
+    // Mensaje de éxito
+    setDescargaExitosa(true);
+    setTimeout(() => setDescargaExitosa(false), 2500);
   };
 
   return (
@@ -174,7 +242,6 @@ export default function ViewReportes() {
                       <th className="p-4">Ubicación</th>
                       <th className="p-4 text-center">Mínimo</th>
                       <th className="p-4 text-center">Actual</th>
-
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
@@ -191,7 +258,6 @@ export default function ViewReportes() {
                           <td className={`p-4 text-center font-black ${esBajo ? "text-rose-500" : "text-emerald-600"}`}>
                             {ut.stockActual}
                           </td>
-                          
                         </tr>
                       );
                     })}
