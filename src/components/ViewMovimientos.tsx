@@ -48,13 +48,15 @@ export default function ViewMovimientos() {
   const [formMotivo, setFormMotivo] = useState("Reabastecimiento directo");
   const [formGradoAula, setFormGradoAula] = useState("3 años");
   const [formSeccionAula, setFormSeccionAula] = useState("A");
+  const [formNombreManualidad, setFormNombreManualidad] = useState("");
 
   const [mensajeExito, setMensajeExito] = useState("");
 
   const puedeGestionar = ["Administrador", "Secretaria"].includes(usuarioActivo.rol);
 
   const motivosEntrada = [
-    "Reabastecimiento directo"
+    "Reabastecimiento directo",
+    "Material educativo"
   ];
 
   const motivosSalida = [
@@ -69,6 +71,7 @@ export default function ViewMovimientos() {
     setFormMotivo("Reabastecimiento directo");
     setFormGradoAula("3 años");
     setFormSeccionAula("A");
+    setFormNombreManualidad("");
     setMostrarModalRegistro(true);
   };
 
@@ -97,9 +100,18 @@ export default function ViewMovimientos() {
       stockResultante = stockAnterior - formCantidad;
     }
 
-    const finalMotivo = (formTipo === "Salida" && formMotivo === "Uso en Aula")
-      ? `Uso en Aula (${formGradoAula} - Sección ${formSeccionAula})`
-      : formMotivo;
+    // Material educativo (Entrada): el nombre de la manualidad es obligatorio
+    if (formTipo === "Entrada" && formMotivo === "Material educativo" && formNombreManualidad.trim() === "") {
+      alert("Indique el nombre de la manualidad para el material educativo.");
+      return;
+    }
+
+    let finalMotivo = formMotivo;
+    if (formTipo === "Salida" && formMotivo === "Uso en Aula") {
+      finalMotivo = `Uso en Aula (${formGradoAula} - Sección ${formSeccionAula})`;
+    } else if (formTipo === "Entrada" && formMotivo === "Material educativo") {
+      finalMotivo = `Material educativo - ${formNombreManualidad.trim()}`;
+    }
 
     registrarNuevoMovimiento({
       tipo: formTipo,
@@ -437,6 +449,19 @@ export default function ViewMovimientos() {
                   ))}
                 </select>
               </div>
+
+              {formTipo === "Entrada" && formMotivo === "Material educativo" && (
+                <div className="animate-fade-in">
+                  <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Nombre de la Manualidad</label>
+                  <input
+                    type="text"
+                    value={formNombreManualidad}
+                    onChange={(e) => setFormNombreManualidad(e.target.value)}
+                    placeholder="Ej. Adornos para el Día de la Madre"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
