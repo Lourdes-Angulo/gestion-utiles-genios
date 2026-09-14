@@ -156,10 +156,41 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const reconciliarAlertas = async () => {
     const activas = alertas.filter(a => !a.resuelta);
 
-    // Alertas cuyo útil ya se recuperó (o fue desactivado / no existe) -> resolver
+    // Construye el texto de una alerta según el stock REAL y actual del útil
+    const construirTexto = (u: UtilEscolar) => {
+      const critico = u.stockActual < u.stockMinimo / 2; // menos de la mitad del mínimo
+      return {
+        tipo: (critico ? "proximo_agotarse" : "stock_bajo") as Alerta["tipo"],
+        prioridad: (critico ? "Alta" : "Media") as Alerta["prioridad"],
+        descripcion: u.stockActual === 0
+          ? "El producto se encuentra sin stock."
+          : `Stock actual (${u.stockActual}) menor al stock mínimo (${u.stockMinimo}).`,
+        accionRecomendada: `Adquirir al menos ${Math.max(1, (u.stockMinimo + 5) - u.stockActual)} unidades.`
+      };
+    };
+
+    // Alertas a resolver (útil recuperado, inactivo o inexistente)
     const aResolver = activas.filter(a => {
       const u = utiles.find(x => x.id === a.utilId);
       return !u || u.estado !== "Activo" || u.stockActual > u.stockMinimo;
+    });
+    const idsResolver = new Set(aResolver.map(a => a.id));
+
+    // Alertas activas que siguen bajas pero con el texto desactualizado
+    const aActualizar: { id: string; nuevo: ReturnType<typeof construirTexto> }[] = [];
+    activas.forEach(a => {
+      if (idsResolver.has(a.id)) return;
+      const u = utiles.find(x => x.id === a.utilId);
+      if (!u) return;
+      const nuevo = construirTexto(u);
+      if (
+        a.descripcion !== nuevo.descripcion ||
+        a.accionRecomendada !== nuevo.accionRecomendada ||
+        a.tipo !== nuevo.tipo ||
+        a.prioridad !== nuevo.prioridad
+      ) {
+        aActualizar.push({ id: a.id, nuevo });
+      }
     });
 
     // Útiles bajos/sin stock que aún no tienen alerta activa -> crear
@@ -170,36 +201,46 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       !conAlerta.has(u.id)
     );
 
-    if (aResolver.length === 0 && utilesBajos.length === 0) return;
+    if (aResolver.length === 0 && aActualizar.length === 0 && utilesBajos.length === 0) return;
 
     // Resolver en Supabase
     for (const a of aResolver) {
       await supabase.from("alertas").update({ resuelta: true }).eq("id", a.id);
     }
 
-    // Crear en Supabase
-    const nuevas: Alerta[] = utilesBajos.map((u, i) => ({
-      id: `AL-${Date.now()}-${i}`,
-      tipo: u.stockActual === 0 ? "proximo_agotarse" : "stock_bajo",
-      prioridad: u.stockActual === 0 ? "Alta" : "Media",
-      fecha: new Date().toISOString().split("T")[0],
-      utilId: u.id,
-      utilNombre: u.nombre,
-      descripcion: u.stockActual === 0
-        ? "El producto se encuentra sin stock."
-        : `Stock actual (${u.stockActual}) menor al stock mínimo (${u.stockMinimo}).`,
-      accionRecomendada: `Adquirir al menos ${u.stockMinimo * 2} unidades.`,
-      resuelta: false
-    }));
+    // Actualizar textos desactualizados en Supabase
+    for (const item of aActualizar) {
+      await supabase.from("alertas").update(item.nuevo).eq("id", item.id);
+    }
+
+    // Crear nuevas en Supabase
+    const nuevas: Alerta[] = utilesBajos.map((u, i) => {
+      const t = construirTexto(u);
+      return {
+        id: `AL-${Date.now()}-${i}`,
+        tipo: t.tipo,
+        prioridad: t.prioridad,
+        fecha: new Date().toISOString().split("T")[0],
+        utilId: u.id,
+        utilNombre: u.nombre,
+        descripcion: t.descripcion,
+        accionRecomendada: t.accionRecomendada,
+        resuelta: false
+      };
+    });
     if (nuevas.length > 0) {
       await supabase.from("alertas").insert(nuevas);
     }
 
     // Actualiza el estado local
-    const idsResueltas = new Set(aResolver.map(a => a.id));
+    const mapaActualizar = new Map(aActualizar.map(x => [x.id, x.nuevo]));
     setAlertas(prev => [
       ...nuevas,
-      ...prev.map(a => idsResueltas.has(a.id) ? { ...a, resuelta: true } : a)
+      ...prev.map(a => {
+        if (idsResolver.has(a.id)) return { ...a, resuelta: true };
+        const upd = mapaActualizar.get(a.id);
+        return upd ? { ...a, ...upd } : a;
+      })
     ]);
   };
 
