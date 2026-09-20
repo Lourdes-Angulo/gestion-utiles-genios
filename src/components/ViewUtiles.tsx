@@ -40,7 +40,7 @@ export default function ViewUtiles() {
 
   // Form states
   const [formNombre, setFormNombre] = useState("");
-  const [formCategoria, setFormCategoria] = useState("Cuadernos");
+  const [formCategoria, setFormCategoria] = useState("Escritura");
   const [formUnidadMedida, setFormUnidadMedida] = useState("Unidad");
   const [formStockActual, setFormStockActual] = useState(0);
   const [formStockMinimo, setFormStockMinimo] = useState(10);
@@ -51,13 +51,13 @@ export default function ViewUtiles() {
   const puedeGestionar = ["Administrador", "Secretaria"].includes(usuarioActivo.rol);
   const esAdmin = usuarioActivo.rol === "Administrador";
 
-  const categorias = ["Cuadernos", "Escritura", "Papelería", "Arte y Pintura", "Pegamentos", "Otros"];
+  const categorias = ["Escritura", "Papelería", "Arte y Pintura", "Pegamentos", "Juegos Lúdicos", "Psicomotricidad", "Otros"];
   const unidades = ["Unidad", "Caja", "Paquete", "Docena", "Millar"];
 
   const handleAbrirRegistro = () => {
     setEsEdicion(false);
     setFormNombre("");
-    setFormCategoria("Cuadernos");
+    setFormCategoria("Escritura");
     setFormUnidadMedida("Unidad");
     setFormStockActual(0);
     setFormStockMinimo(10);
