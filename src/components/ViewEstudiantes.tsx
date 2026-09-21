@@ -5,6 +5,7 @@
 
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
+import { supabase } from "../lib/supabaseClient";
 import { Estudiante } from "../types";
 import {
   Search,
@@ -40,12 +41,17 @@ export default function ViewEstudiantes() {
   const [esEdicion, setEsEdicion] = useState(false);
 
   // Form states
+  const [formDni, setFormDni] = useState("");
   const [formNombres, setFormNombres] = useState("");
   const [formApellidos, setFormApellidos] = useState("");
   const [formGrado, setFormGrado] = useState("1er Grado");
   const [formNivel, setFormNivel] = useState<"Inicial" | "Primaria">("Primaria");
   const [formApoderadoNombre, setFormApoderadoNombre] = useState("");
   const [formApoderadoSecundarioNombre, setFormApoderadoSecundarioNombre] = useState("");
+
+  // Estado de la búsqueda por DNI
+  const [buscandoDni, setBuscandoDni] = useState(false);
+  const [mensajeDni, setMensajeDni] = useState("");
 
   const [mensajeExito, setMensajeExito] = useState("");
 
@@ -55,30 +61,64 @@ export default function ViewEstudiantes() {
 
   const handleAbrirRegistro = () => {
     setEsEdicion(false);
+    setFormDni("");
     setFormNombres("");
     setFormApellidos("");
     setFormGrado("1er Grado");
     setFormNivel("Primaria");
     setFormApoderadoNombre("");
     setFormApoderadoSecundarioNombre("");
+    setMensajeDni("");
     setMostrarModalRegistro(true);
   };
 
   const handleAbrirEdicion = (est: Estudiante) => {
     setEsEdicion(true);
     setEstudianteSeleccionado(est);
+    setFormDni(est.dni || "");
     setFormNombres(est.nombres);
     setFormApellidos(est.apellidos);
     setFormGrado(est.grado);
     setFormNivel(est.nivel as "Inicial" | "Primaria");
     setFormApoderadoNombre(est.apoderadoNombre || "");
     setFormApoderadoSecundarioNombre(est.apoderadoSecundarioNombre || "");
+    setMensajeDni("");
     setMostrarModalRegistro(true);
   };
 
   const handleVerDetalle = (est: Estudiante) => {
     setEstudianteSeleccionado(est);
     setMostrarModalDetalle(true);
+  };
+
+  // Consulta el DNI en RENIEC (a través de la Edge Function de Supabase)
+  // y autocompleta nombres y apellidos.
+  const handleBuscarDni = async () => {
+    const dniLimpio = formDni.trim();
+    if (!/^\d{8}$/.test(dniLimpio)) {
+      setMensajeDni("El DNI debe tener 8 dígitos.");
+      return;
+    }
+
+    setMensajeDni("");
+    setBuscandoDni(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("consulta-dni", {
+        body: { dni: dniLimpio }
+      });
+
+      if (error || !data || data.error) {
+        setMensajeDni("No se encontró el DNI o falló la consulta. Puedes escribir los nombres a mano.");
+      } else {
+        setFormNombres(data.nombres || "");
+        setFormApellidos(`${data.apellidoPaterno || ""} ${data.apellidoMaterno || ""}`.trim());
+        setMensajeDni("Datos encontrados y autocompletados.");
+      }
+    } catch (e) {
+      setMensajeDni("Ocurrió un error al consultar. Puedes escribir los nombres a mano.");
+    } finally {
+      setBuscandoDni(false);
+    }
   };
 
   const handleGuardar = (e: React.FormEvent) => {
@@ -91,6 +131,7 @@ export default function ViewEstudiantes() {
     if (esEdicion && estudianteSeleccionado) {
       editarEstudiante({
         ...estudianteSeleccionado,
+        dni: formDni.trim(),
         nombres: formNombres,
         apellidos: formApellidos,
         grado: formGrado,
@@ -101,6 +142,7 @@ export default function ViewEstudiantes() {
       setMensajeExito("Estudiante actualizado correctamente.");
     } else {
       registrarEstudiante({
+        dni: formDni.trim(),
         nombres: formNombres,
         apellidos: formApellidos,
         grado: formGrado,
@@ -122,6 +164,7 @@ export default function ViewEstudiantes() {
     const cumpleBusqueda =
       `${est.nombres} ${est.apellidos}`.toLowerCase().includes(filtroBusqueda.toLowerCase()) ||
       est.codigo.toLowerCase().includes(filtroBusqueda.toLowerCase()) ||
+      (est.dni || "").toLowerCase().includes(filtroBusqueda.toLowerCase()) ||
       est.apoderadoNombre.toLowerCase().includes(filtroBusqueda.toLowerCase());
 
     const cumpleGrado = filtroGrado === "" || est.grado === filtroGrado;
@@ -147,7 +190,7 @@ export default function ViewEstudiantes() {
           <Search className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por nombre, código o apoderado..."
+            placeholder="Buscar por nombre, código, DNI o apoderado..."
             value={filtroBusqueda}
             onChange={(e) => setFiltroBusqueda(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all duration-200"
@@ -231,7 +274,9 @@ export default function ViewEstudiantes() {
                           <span className="font-bold text-slate-800 block">
                             {est.nombres} {est.apellidos}
                           </span>
-                          <span className="text-[10px] text-slate-400 block mt-0.5">I.E.P. Alumno</span>
+                          <span className="text-[10px] text-slate-400 block mt-0.5">
+                            {est.dni ? `DNI: ${est.dni}` : "I.E.P. Alumno"}
+                          </span>
                         </div>
                       </div>
                     </td>
@@ -325,6 +370,43 @@ export default function ViewEstudiantes() {
             </div>
 
             <form onSubmit={handleGuardar} className="p-6 space-y-4 text-xs font-semibold">
+              {/* DNI con búsqueda automática en RENIEC */}
+              <div>
+                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">DNI del Estudiante</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={formDni}
+                    onChange={(e) => setFormDni(e.target.value.replace(/\D/g, ""))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleBuscarDni();
+                      }
+                    }}
+                    placeholder="8 dígitos"
+                    className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleBuscarDni}
+                    disabled={buscandoDni}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap"
+                  >
+                    <Search className="w-4 h-4" />
+                    {buscandoDni ? "Buscando..." : "Buscar"}
+                  </button>
+                </div>
+                {mensajeDni && (
+                  <p className="text-[10px] text-amber-600 font-semibold mt-1.5">{mensajeDni}</p>
+                )}
+                <p className="text-[10px] text-slate-400 font-medium mt-1.5">
+                  Escribe el DNI y presiona Buscar para autocompletar los nombres. Si no lo encuentra, puedes llenarlos a mano.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Nombres</label>
@@ -475,12 +557,23 @@ export default function ViewEstudiantes() {
 
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                 <div>
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">DNI</span>
+                  <span className="text-xs text-slate-700 block mt-0.5">{estudianteSeleccionado.dni || "No registrado"}</span>
+                </div>
+                <div>
                   <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Nivel de Estudio</span>
                   <span className="text-xs text-slate-700 block mt-0.5">{estudianteSeleccionado.nivel}</span>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                 <div>
                   <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Grado y Sección</span>
                   <span className="text-xs text-slate-700 block mt-0.5">{estudianteSeleccionado.grado}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Estado</span>
+                  <span className="text-xs text-slate-700 block mt-0.5">{estudianteSeleccionado.estado}</span>
                 </div>
               </div>
 

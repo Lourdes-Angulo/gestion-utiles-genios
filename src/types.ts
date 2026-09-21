@@ -6,6 +6,7 @@
 export interface Estudiante {
   id: string;
   codigo: string;
+  dni?: string;
   nombres: string;
   apellidos: string;
   grado: string; // e.g. "3 años", "1er Grado"
