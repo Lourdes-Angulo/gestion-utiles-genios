@@ -5,13 +5,18 @@
 
 import React, { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
+import { supabase } from "../lib/supabaseClient";
 import {
   Info,
   Package,
   CalendarDays,
   ShieldCheck,
   Zap,
-  TrendingUp
+  TrendingUp,
+  Sparkles,
+  AlertTriangle,
+  ShoppingCart,
+  Eye
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -42,7 +47,19 @@ interface PrediccionCalculada {
   hayDatos: boolean;
 }
 
+// Estructura del análisis que devuelve la IA
+interface AnalisisIA {
+  resumenGeneral?: string;
+  utilesVigilar?: { utilNombre: string; motivo: string }[];
+  anomalias?: { utilNombre: string; detalle: string }[];
+  recomendaciones?: { utilId: string; utilNombre: string; texto: string }[];
+}
+
 const NOMBRES_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+// Guarda el último análisis de IA para que no se borre al cambiar de módulo
+// (se mantiene durante toda la sesión; se regenera al recargar la página).
+let cacheAnalisisIA: AnalisisIA | null = null;
 
 export default function ViewPrediccion() {
   const { utiles, movimientos } = useApp();
@@ -123,19 +140,75 @@ export default function ViewPrediccion() {
   const [seleccionadoId, setSeleccionadoId] = useState<string | null>(null);
   const prediccionActiva = predicciones.find(p => p.id === seleccionadoId) ?? predicciones[0] ?? null;
 
-  // Datos para el gráfico: histórico real + proyección del próximo mes
+  // Estado del análisis con IA
+  const [analizandoIA, setAnalizandoIA] = useState(false);
+  const [resultadoIA, setResultadoIA] = useState<AnalisisIA | null>(cacheAnalisisIA);
+  const [errorIA, setErrorIA] = useState("");
+
+  const handleAnalizarIA = async () => {
+    if (predicciones.length === 0) {
+      setErrorIA("No hay útiles registrados para analizar.");
+      return;
+    }
+    setErrorIA("");
+    setAnalizandoIA(true);
+    try {
+      const datosParaIA = predicciones.map(p => ({
+        utilId: p.utilId,
+        nombre: p.utilNombre,
+        stockActual: p.stockActual,
+        stockMinimo: p.stockMinimo,
+        consumoUltimos6Meses: p.consumoHistorico,
+        demandaEstimada: p.demandaEstimada,
+        fechaEstimadaAgotamiento: p.fechaProbableAgotamiento
+      }));
+
+      const { data, error } = await supabase.functions.invoke("analisis-inventario", {
+        body: { utiles: datosParaIA }
+      });
+
+      if (error || !data || data.error) {
+        setErrorIA("No se pudo generar el análisis. Intenta de nuevo en un momento.");
+      } else {
+        cacheAnalisisIA = data as AnalisisIA;
+        setResultadoIA(data as AnalisisIA);
+      }
+    } catch (e) {
+      setErrorIA("Ocurrió un error al generar el análisis.");
+    } finally {
+      setAnalizandoIA(false);
+    }
+  };
+
+  // Recomendación de la IA para el útil seleccionado
+  const recomendacionActiva = resultadoIA?.recomendaciones?.find(
+    r => r.utilId === prediccionActiva?.utilId
+  );
+
+  // Datos para el gráfico: histórico real (verde) + proyección de los próximos 3 meses (azul)
   const getChartData = (pred: PrediccionCalculada) => {
-    const data = pred.consumoHistorico.map((val, i) => ({
-      mes: pred.meses[i],
-      consumo: val,
-      proyeccion: null as number | null
-    }));
-    const ultimo = pred.consumoHistorico[pred.consumoHistorico.length - 1] ?? 0;
-    data.push({
-      mes: "Próx.",
-      consumo: ultimo,
-      proyeccion: pred.demandaEstimada
-    });
+    const data: { mes: string; consumo: number | null; proyeccion: number | null }[] =
+      pred.consumoHistorico.map((val, i) => ({
+        mes: pred.meses[i],
+        consumo: val,
+        proyeccion: null
+      }));
+
+    // Punto de unión: la última barra real también inicia la línea azul
+    if (data.length > 0) {
+      data[data.length - 1].proyeccion = data[data.length - 1].consumo;
+    }
+
+    // Proyección de los próximos 3 meses (media móvil = demanda estimada)
+    const ahora = new Date();
+    for (let k = 1; k <= 3; k++) {
+      const d = new Date(ahora.getFullYear(), ahora.getMonth() + k, 1);
+      data.push({
+        mes: NOMBRES_MES[d.getMonth()],
+        consumo: null,
+        proyeccion: pred.demandaEstimada
+      });
+    }
     return data;
   };
 
@@ -248,7 +321,7 @@ export default function ViewPrediccion() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-extrabold text-slate-800 text-sm">Histórico de Consumo vs Demanda Proyectada</h3>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Consumo real de los últimos 6 meses y proyección para el próximo</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Consumo real de los últimos 6 meses y proyección para los próximos 3</p>
                   </div>
                   <span className="text-[9px] bg-slate-100 border border-slate-200 px-2 py-0.5 text-slate-600 font-bold rounded">Unidades</span>
                 </div>
@@ -261,8 +334,8 @@ export default function ViewPrediccion() {
                       <YAxis tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 11 }} />
                       <Tooltip contentStyle={{ background: "#1e293b", color: "#f8fafc", borderRadius: "8px", fontSize: "11px", border: "none" }} />
                       <Legend iconSize={8} wrapperStyle={{ fontSize: "11px", marginTop: "10px" }} />
-                      <Line type="monotone" dataKey="consumo" name="Consumo Real Histórico" stroke="#10b981" strokeWidth={3.5} activeDot={{ r: 6 }} />
-                      <Line type="monotone" dataKey="proyeccion" name="Proyección Estimada" stroke="#4f46e5" strokeWidth={3.5} strokeDasharray="5 5" />
+                      <Line type="monotone" dataKey="consumo" name="Salidas Reales" stroke="#10b981" strokeWidth={3.5} activeDot={{ r: 6 }} connectNulls={false} />
+                      <Line type="monotone" dataKey="proyeccion" name="Predicción de Salidas" stroke="#4f46e5" strokeWidth={3.5} strokeDasharray="5 5" connectNulls={true} />
 
                       {/* Alert line representing stockout point if stock actual is low */}
                       <ReferenceLine y={prediccionActiva.stockActual} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: "Stock Actual", fill: "#f43f5e", fontSize: 9, position: "top" }} />
@@ -309,6 +382,24 @@ export default function ViewPrediccion() {
                 </div>
               </div>
 
+              {/* Recomendación IA para el útil seleccionado */}
+              {recomendacionActiva && (
+                <div className="glass-card p-5 bg-violet-50/30 border-l-4 border-violet-400 flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-violet-100 text-violet-600 shrink-0">
+                    <ShoppingCart className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-violet-950 text-xs flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                      Recomendación de la IA para este útil
+                    </h5>
+                    <p className="text-[11px] text-slate-600 mt-1 font-medium leading-relaxed">
+                      {recomendacionActiva.texto}
+                    </p>
+                  </div>
+                </div>
+              )}
+
             </div>
           ) : (
             <div className="bg-white p-12 rounded-3xl border border-slate-150 text-center text-slate-400 font-bold">
@@ -317,6 +408,122 @@ export default function ViewPrediccion() {
           )}
         </div>
 
+      </div>
+
+      {/* Panel de Análisis Inteligente (IA) */}
+      <div className="glass-card p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-violet-100 text-violet-600 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-sm">Análisis Inteligente del Inventario</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Recomendaciones generadas por IA a partir de tus datos reales de consumo.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleAnalizarIA}
+            disabled={analizandoIA}
+            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap"
+          >
+            <Sparkles className="w-4 h-4" />
+            {analizandoIA ? "Analizando..." : resultadoIA ? "Actualizar análisis" : "Generar análisis con IA"}
+          </button>
+        </div>
+
+        {errorIA && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3.5 rounded-xl text-[11px] font-semibold">
+            {errorIA}
+          </div>
+        )}
+
+        {!resultadoIA && !errorIA && !analizandoIA && (
+          <div className="bg-slate-50 border border-slate-150 rounded-2xl p-6 text-center text-[11px] text-slate-400 font-semibold">
+            Presiona "Generar análisis con IA" para obtener recomendaciones de compra, detectar consumos inusuales y un resumen general del inventario.
+          </div>
+        )}
+
+        {resultadoIA && (
+          <div className="space-y-5">
+            {/* Resumen general */}
+            {resultadoIA.resumenGeneral && (
+              <div className="bg-violet-50/40 border border-violet-100 rounded-2xl p-4.5">
+                <span className="text-[10px] font-bold text-violet-700 uppercase tracking-wide block mb-1.5">Resumen general</span>
+                <p className="text-[11px] text-slate-600 font-medium leading-relaxed">{resultadoIA.resumenGeneral}</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Útiles a vigilar */}
+              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4.5">
+                <h5 className="font-bold text-slate-700 text-xs flex items-center gap-1.5 mb-3">
+                  <Eye className="w-4 h-4 text-amber-600" />
+                  Útiles a vigilar este mes
+                </h5>
+                {resultadoIA.utilesVigilar && resultadoIA.utilesVigilar.length > 0 ? (
+                  <ul className="space-y-2.5">
+                    {resultadoIA.utilesVigilar.map((u, i) => (
+                      <li key={i} className="text-[11px] leading-relaxed">
+                        <span className="font-bold text-slate-800">{u.utilNombre}:</span>{" "}
+                        <span className="text-slate-600 font-medium">{u.motivo}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[10px] text-slate-400 font-semibold">Sin útiles críticos por ahora.</p>
+                )}
+              </div>
+
+              {/* Anomalías / consumo inusual */}
+              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4.5">
+                <h5 className="font-bold text-slate-700 text-xs flex items-center gap-1.5 mb-3">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  Consumo inusual detectado
+                </h5>
+                {resultadoIA.anomalias && resultadoIA.anomalias.length > 0 ? (
+                  <ul className="space-y-2.5">
+                    {resultadoIA.anomalias.map((a, i) => (
+                      <li key={i} className="text-[11px] leading-relaxed">
+                        <span className="font-bold text-slate-800">{a.utilNombre}:</span>{" "}
+                        <span className="text-slate-600 font-medium">{a.detalle}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[10px] text-slate-400 font-semibold">No se detectaron consumos inusuales.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Recomendaciones de compra */}
+            <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4.5">
+              <h5 className="font-bold text-slate-700 text-xs flex items-center gap-1.5 mb-3">
+                <ShoppingCart className="w-4 h-4 text-emerald-600" />
+                Recomendaciones de compra
+              </h5>
+              {resultadoIA.recomendaciones && resultadoIA.recomendaciones.length > 0 ? (
+                <ul className="space-y-2.5">
+                  {resultadoIA.recomendaciones.map((r, i) => (
+                    <li key={i} className="text-[11px] leading-relaxed">
+                      <span className="font-bold text-slate-800">{r.utilNombre}:</span>{" "}
+                      <span className="text-slate-600 font-medium">{r.texto}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[10px] text-slate-400 font-semibold">Ningún útil necesita reposición inmediata.</p>
+              )}
+            </div>
+
+            <p className="text-[10px] text-slate-400 font-medium leading-relaxed flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              Generado por IA a partir de tus datos reales. Es una ayuda orientativa: revisa antes de decidir una compra.
+            </p>
+          </div>
+        )}
       </div>
 
     </div>
