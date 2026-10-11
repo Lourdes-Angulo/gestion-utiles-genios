@@ -95,7 +95,7 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
                       }`}
                   />
                   <span className="tracking-wide">{item.label}</span>
-                  {item.isAi && (
+                  {"isAi" in item && item.isAi &&  (
                     <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 font-bold rounded uppercase tracking-wider shadow-sm animate-pulse">
                       <Sparkles className="w-2.5 h-2.5" />
                       IA

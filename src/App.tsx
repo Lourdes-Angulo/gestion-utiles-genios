@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { AppProvider } from "./context/AppContext";
 import { supabase } from "./lib/supabaseClient";
 import Sidebar from "./components/Sidebar";
@@ -80,32 +81,83 @@ function MainLayout({ onLogout }: MainLayoutProps) {
   );
 }
 
+
 export default function App() {
-  const [sesionIniciada, setSesionIniciada] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("sesion_colegio_iniciada") === "true";
-    }
-    return false;
-  });
+  const [sesion, setSesion] = useState<Session | null>(null);
+  const [verificandoSesion, setVerificandoSesion] = useState(true);
+
+  useEffect(() => {
+    let activo = true;
+
+    // Recuperar la sesión desde Supabase Auth
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!activo) return;
+
+      if (error) {
+        console.error("Error al recuperar la sesión:", error.message);
+        setSesion(null);
+      } else {
+        setSesion(data.session);
+      }
+
+      setVerificandoSesion(false);
+    }).catch((error) => {
+      if (!activo) return;
+      console.error("Error al verificar la sesión:", error);
+      setSesion(null);
+      setVerificandoSesion(false);
+    });
+
+    // Detectar cuando un usuario inicia o cierra sesión
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange((_event, nuevaSesion) => {
+        if (!activo) return;
+
+        setSesion(nuevaSesion);
+        setVerificandoSesion(false);
+      });
+
+    return () => {
+      activo = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const handleLoginSuccess = () => {
-    setSesionIniciada(true);
+    // La sesión se actualiza mediante onAuthStateChange.
+    // No se concede acceso usando localStorage.
   };
 
   const handleLogout = async () => {
-    // Cierra la sesión en Supabase
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
 
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("sesion_colegio_iniciada");
-      localStorage.removeItem("sesion_colegio_usuario_id");
+    if (error) {
+      console.error("Error al cerrar sesión:", error.message);
+      return;
     }
-    setSesionIniciada(false);
+
+    localStorage.removeItem("sesion_colegio_iniciada");
+    localStorage.removeItem("sesion_colegio_usuario_id");
+
+    setSesion(null);
   };
+
+  if (verificandoSesion) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-green-600 border-t-transparent" />
+          <p className="text-slate-600">
+            Verificando sesión segura...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AppProvider>
-      {sesionIniciada ? (
+      {sesion ? (
         <MainLayout onLogout={handleLogout} />
       ) : (
         <Login onLoginSuccess={handleLoginSuccess} />
@@ -113,3 +165,4 @@ export default function App() {
     </AppProvider>
   );
 }
+
