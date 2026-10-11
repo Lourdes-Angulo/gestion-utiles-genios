@@ -70,14 +70,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [alertas, setAlertas] = useState<Alerta[]>(INITIAL_ALERTS);
   const [usuarios, setUsuarios] = useState<Usuario[]>(INITIAL_USERS);
   const [datosListos, setDatosListos] = useState(false);
-  const [usuarioActivo, setUsuarioActivo] = useState<Usuario>(() => {
-    const cachedId = typeof window !== "undefined" ? localStorage.getItem("sesion_colegio_usuario_id") : null;
-    if (cachedId) {
-      const user = INITIAL_USERS.find(u => u.id === cachedId);
-      if (user) return user;
-    }
-    return INITIAL_USERS[0];
-  });
+  // Compatibilidad temporal con componentes existentes mientras se verifica
+  // el esquema de Supabase. Este perfil de demostración NO otorga permisos.
+  // No usar usuarioActivo como fuente de autorización o identidad de auditoría.
+  const [usuarioActivo, setUsuarioActivo] = useState<Usuario>(INITIAL_USERS[0]);
 
   const [configuracionColegio, setConfiguracionColegio] = useState({
     nombre: "I.E.P. Genios del Millennium",

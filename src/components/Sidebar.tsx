@@ -17,10 +17,11 @@ import {
   TrendingUp,
   Bell,
   FileText,
-  UserCheck,
+    UserCheck,
   Sparkles,
   School,
-  LogOut
+  LogOut,
+  ShieldCheck
 } from "lucide-react";
 
 interface SidebarProps {
@@ -46,7 +47,8 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
     { id: "prediccion", label: "Predicción de stock", icon: TrendingUp },
     { id: "alertas", label: "Alertas", icon: Bell, badge: alertasActivasCount, badgeColor: "bg-rose-500" },
     { id: "reportes", label: "Reportes", icon: FileText },
-    { id: "usuarios", label: "Usuarios", icon: UserCheck }
+    { id: "usuarios", label: "Usuarios", icon: UserCheck },
+    { id: "auditoria", label: "Auditoría", icon: ShieldCheck }
   ];
 
   return (
@@ -75,7 +77,11 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
         </div>
         
         {menuItems
-          .filter((item) => item.id !== "usuarios" || usuarioActivo.rol === "Administrador")
+          .filter(
+            (item) =>
+              !["usuarios", "auditoria"].includes(item.id) ||
+              usuarioActivo.rol === "Administrador"
+          )
           .map((item) => {
             const Icon = item.icon;
             const isActive = vistaActiva === item.id;
