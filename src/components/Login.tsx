@@ -23,38 +23,54 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setInfoMsg("");
 
     const emailLower = correo.trim().toLowerCase();
-    const pass = contrasenia.trim();
+    const pass = contrasenia;
 
     if (!emailLower || !pass) {
       setErrorMsg("Por favor, ingrese su correo y contraseña.");
       return;
     }
 
+    
     setCargando(true);
 
-    // Supabase valida el correo y la contraseña de verdad
-    const { error } = await supabase.auth.signInWithPassword({
-      email: emailLower,
-      password: pass
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailLower,
+        password: pass,
+      });
 
-    if (error) {
-      setErrorMsg("Correo o contraseña incorrectos. Por favor, intente de nuevo.");
+      if (error || !data.session) {
+        setErrorMsg(
+          "No se pudo iniciar sesión. Verifica tus credenciales e inténtalo nuevamente."
+        );
+        return;
+      }
+
+      // Asociación temporal con el perfil institucional.
+      // Posteriormente utilizaremos auth.users.id y RLS.
+      const perfil = usuarios.find(
+        (u) => u.correo.toLowerCase() === emailLower
+      );
+
+      if (perfil) {
+        cambiarUsuarioActivo(perfil.id);
+        localStorage.setItem("sesion_colegio_usuario_id", perfil.id);
+      } else {
+        localStorage.removeItem("sesion_colegio_usuario_id");
+      }
+
+      // App.tsx recibe la sesión mediante onAuthStateChange.
+      onLoginSuccess();
+
+    } catch (error) {
+      console.error("Error inesperado de autenticación:", error);
+      setErrorMsg(
+        "Ocurrió un problema al iniciar sesión. Inténtalo nuevamente."
+      );
+    } finally {
       setCargando(false);
-      return;
     }
-
-    // Busca el perfil (nombre, rol, permisos) que coincide con ese correo
-    const perfil = usuarios.find(u => u.correo.toLowerCase() === emailLower);
-    if (perfil) {
-      cambiarUsuarioActivo(perfil.id);
-      localStorage.setItem("sesion_colegio_usuario_id", perfil.id);
-    }
-
-    localStorage.setItem("sesion_colegio_iniciada", "true");
-    setCargando(false);
-    onLoginSuccess();
-  };
+    };
 
   const handleForgotPassword = async () => {
     setErrorMsg("");
