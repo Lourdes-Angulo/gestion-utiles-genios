@@ -17,10 +17,11 @@ import {
   TrendingUp,
   Bell,
   FileText,
-  UserCheck,
+    UserCheck,
   Sparkles,
   School,
-  LogOut
+  LogOut,
+  ShieldCheck
 } from "lucide-react";
 
 interface SidebarProps {
@@ -46,7 +47,8 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
     { id: "prediccion", label: "Predicción de stock", icon: TrendingUp },
     { id: "alertas", label: "Alertas", icon: Bell, badge: alertasActivasCount, badgeColor: "bg-rose-500" },
     { id: "reportes", label: "Reportes", icon: FileText },
-    { id: "usuarios", label: "Usuarios", icon: UserCheck }
+    { id: "usuarios", label: "Usuarios", icon: UserCheck },
+    { id: "auditoria", label: "Auditoría", icon: ShieldCheck }
   ];
 
   return (
@@ -75,7 +77,11 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
         </div>
         
         {menuItems
-          .filter((item) => item.id !== "usuarios" || usuarioActivo.rol === "Administrador")
+          .filter(
+            (item) =>
+              !["usuarios", "auditoria"].includes(item.id) ||
+              usuarioActivo.rol === "Administrador"
+          )
           .map((item) => {
             const Icon = item.icon;
             const isActive = vistaActiva === item.id;
@@ -95,7 +101,7 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
                       }`}
                   />
                   <span className="tracking-wide">{item.label}</span>
-                  {item.isAi && (
+                  {"isAi" in item && item.isAi &&  (
                     <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 font-bold rounded uppercase tracking-wider shadow-sm animate-pulse">
                       <Sparkles className="w-2.5 h-2.5" />
                       IA

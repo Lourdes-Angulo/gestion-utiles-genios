@@ -23,54 +23,110 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setInfoMsg("");
 
     const emailLower = correo.trim().toLowerCase();
-    const pass = contrasenia.trim();
+    const pass = contrasenia;
 
     if (!emailLower || !pass) {
       setErrorMsg("Por favor, ingrese su correo y contraseña.");
       return;
     }
 
+    
     setCargando(true);
 
-    // Supabase valida el correo y la contraseña de verdad
-    const { error } = await supabase.auth.signInWithPassword({
-      email: emailLower,
-      password: pass
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailLower,
+        password: pass,
+      });
 
-    if (error) {
-      setErrorMsg("Correo o contraseña incorrectos. Por favor, intente de nuevo.");
+      if (error || !data.session) {
+        console.error("Error de autenticación:", {
+          codigo: error?.code,
+          estado: error?.status,
+          mensaje: error?.message,
+      });
+
+      setErrorMsg(
+        "No se pudo iniciar sesión. Verifica tus credenciales e inténtalo nuevamente."
+      );
+      return;
+      }
+
+      // Asociación temporal con el perfil institucional.
+      // Posteriormente utilizaremos auth.users.id y RLS.
+      const perfil = usuarios.find(
+        (u) => u.correo.toLowerCase() === emailLower
+      );
+
+      if (perfil) {
+        cambiarUsuarioActivo(perfil.id);
+        localStorage.setItem("sesion_colegio_usuario_id", perfil.id);
+      } else {
+        localStorage.removeItem("sesion_colegio_usuario_id");
+      }
+
+      // App.tsx recibe la sesión mediante onAuthStateChange.
+      onLoginSuccess();
+
+    } catch (error) {
+      console.error("Error inesperado de autenticación:", error);
+      setErrorMsg(
+        "Ocurrió un problema al iniciar sesión. Inténtalo nuevamente."
+      );
+    } finally {
       setCargando(false);
-      return;
     }
+    };
 
-    // Busca el perfil (nombre, rol, permisos) que coincide con ese correo
-    const perfil = usuarios.find(u => u.correo.toLowerCase() === emailLower);
-    if (perfil) {
-      cambiarUsuarioActivo(perfil.id);
-      localStorage.setItem("sesion_colegio_usuario_id", perfil.id);
-    }
+  
+const handleForgotPassword = async () => {
+  if (cargando) return;
 
-    localStorage.setItem("sesion_colegio_iniciada", "true");
-    setCargando(false);
-    onLoginSuccess();
-  };
+  setErrorMsg("");
+  setInfoMsg("");
 
-  const handleForgotPassword = async () => {
-    setErrorMsg("");
-    setInfoMsg("");
-    const emailLower = correo.trim().toLowerCase();
-    if (!emailLower) {
-      setErrorMsg('Escribe tu correo arriba y luego pulsa "¿Olvidaste tu contraseña?".');
-      return;
-    }
-    const { error } = await supabase.auth.resetPasswordForEmail(emailLower);
+  const emailLower = correo.trim().toLowerCase();
+
+  if (!emailLower) {
+    setErrorMsg(
+      'Escribe tu correo electrónico y luego pulsa "¿Olvidaste tu contraseña?".'
+    );
+    return;
+  }
+
+  setCargando(true);
+
+  try {
+    const { error } =
+      await supabase.auth.resetPasswordForEmail(
+        emailLower,
+        {
+          redirectTo:
+            `${window.location.origin}/restablecer-contrasena`,
+        }
+      );
+
     if (error) {
-      setErrorMsg("No se pudo enviar el correo de recuperación: " + error.message);
-      return;
+      console.error(
+        "Error al solicitar recuperación:",
+        error.code,
+        error.message
+      );
     }
-    setInfoMsg("Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.");
-  };
+
+    setInfoMsg(
+      "Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña. Revisa también Spam."
+    );
+  } catch (err) {
+    console.error("Error de conexión:", err);
+    setErrorMsg(
+      "No se pudo procesar la solicitud. Inténtalo más tarde."
+    );
+  } finally {
+    setCargando(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-[#f0f4f8] p-4 font-sans select-none antialiased">

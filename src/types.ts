@@ -123,6 +123,7 @@ export interface Alerta {
   resuelta: boolean;
 }
 
+
 export interface Usuario {
   id: string;
   nombre: string;
@@ -131,4 +132,7 @@ export interface Usuario {
   permisos: string[];
   estado: "Activo" | "Inactivo";
   avatar: string;
+
+  // Identificador de la cuenta en Supabase Auth
+  authUserId?: string;
 }
