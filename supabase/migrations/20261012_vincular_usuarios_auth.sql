@@ -31,3 +31,14 @@ BEGIN
   END IF;
 END;
 $$;
+
+
+-- Vincular perfiles institucionales con Supabase Auth.
+-- No ejecutar todavía en producción.
+
+UPDATE public.usuarios AS u
+SET "authUserId" = a.id
+FROM auth.users AS a
+WHERE LOWER(TRIM(u.correo)) = LOWER(TRIM(a.email))
+  AND u.id IN ('U_ADMIN', 'U_SECRETARIA')
+  AND u."authUserId" IS NULL;
