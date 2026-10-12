@@ -125,6 +125,20 @@ export default function ViewEstudiantes() {
     e.preventDefault();
     if (!formNombres.trim() || !formApellidos.trim()) return;
 
+    // Evita registrar dos veces el mismo DNI
+    const dniLimpio = formDni.trim();
+    if (dniLimpio) {
+      const duplicado = estudiantes.some(
+        (e) =>
+          (e.dni || "").trim() === dniLimpio &&
+          (!esEdicion || e.id !== estudianteSeleccionado?.id)
+      );
+      if (duplicado) {
+        setMensajeDni("Ya existe un estudiante registrado con este DNI.");
+        return;
+      }
+    }
+
     const apoderadoNombre = formApoderadoNombre.trim() || "No asignado";
     const apoderadoSecundarioNombre = formApoderadoSecundarioNombre.trim() || undefined;
 
