@@ -26,14 +26,20 @@ import ViewAlertas from "./components/ViewAlertas";
 import ViewReportes from "./components/ViewReportes";
 import ViewUsuarios from "./components/ViewUsuarios";
 import ViewAuditoria from "./components/ViewAuditoria";
+import ViewMiPerfil from "./components/ViewMiPerfil";
+import ViewVerificarCorreo from "./components/ViewVerificarCorreo";
+import ViewRestablecerContrasena from "./components/ViewRestablecerContrasena";
 
 interface MainLayoutProps {
   onLogout: () => void;
 }
 
 function MainLayout({ onLogout }: MainLayoutProps) {
-  const [vistaActiva, setVistaActiva] = useState("inicio");
-
+  const [vistaActiva, setVistaActiva] = useState(() => {
+  return window.location.hash.startsWith("#/verificar-correo")
+    ? "verificar_correo"
+    : "inicio";
+  });
   const renderVista = () => {
     switch (vistaActiva) {
       case "inicio":
@@ -60,6 +66,10 @@ function MainLayout({ onLogout }: MainLayoutProps) {
         return <ViewUsuarios />;
       case "auditoria":
         return <ViewAuditoria />;
+      case "mi_perfil":
+        return <ViewMiPerfil />;
+      case "verificar_correo":
+        return <ViewVerificarCorreo />;
       default:
         return <ViewInicio setVistaActiva={setVistaActiva} />;
     }
@@ -88,6 +98,9 @@ function MainLayout({ onLogout }: MainLayoutProps) {
 export default function App() {
   const [sesion, setSesion] = useState<Session | null>(null);
   const [verificandoSesion, setVerificandoSesion] = useState(true);
+
+  const esRutaRecuperacion =
+  window.location.pathname === "/restablecer-contrasena";
 
   useEffect(() => {
     let activo = true;
@@ -159,13 +172,15 @@ export default function App() {
   }
 
   return (
-    <AppProvider>
-      {sesion ? (
-        <MainLayout onLogout={handleLogout} />
-      ) : (
-        <Login onLoginSuccess={handleLoginSuccess} />
-      )}
-    </AppProvider>
-  );
+  <AppProvider>
+    {esRutaRecuperacion ? (
+      <ViewRestablecerContrasena />
+    ) : sesion ? (
+      <MainLayout onLogout={handleLogout} />
+    ) : (
+      <Login onLoginSuccess={handleLoginSuccess} />
+    )}
+  </AppProvider>
+);
 }
 

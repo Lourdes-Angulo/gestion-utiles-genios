@@ -40,10 +40,16 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       });
 
       if (error || !data.session) {
-        setErrorMsg(
-          "No se pudo iniciar sesión. Verifica tus credenciales e inténtalo nuevamente."
-        );
-        return;
+        console.error("Error de autenticación:", {
+          codigo: error?.code,
+          estado: error?.status,
+          mensaje: error?.message,
+      });
+
+      setErrorMsg(
+        "No se pudo iniciar sesión. Verifica tus credenciales e inténtalo nuevamente."
+      );
+      return;
       }
 
       // Asociación temporal con el perfil institucional.
@@ -72,21 +78,55 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
     };
 
-  const handleForgotPassword = async () => {
-    setErrorMsg("");
-    setInfoMsg("");
-    const emailLower = correo.trim().toLowerCase();
-    if (!emailLower) {
-      setErrorMsg('Escribe tu correo arriba y luego pulsa "¿Olvidaste tu contraseña?".');
-      return;
-    }
-    const { error } = await supabase.auth.resetPasswordForEmail(emailLower);
+  
+const handleForgotPassword = async () => {
+  if (cargando) return;
+
+  setErrorMsg("");
+  setInfoMsg("");
+
+  const emailLower = correo.trim().toLowerCase();
+
+  if (!emailLower) {
+    setErrorMsg(
+      'Escribe tu correo electrónico y luego pulsa "¿Olvidaste tu contraseña?".'
+    );
+    return;
+  }
+
+  setCargando(true);
+
+  try {
+    const { error } =
+      await supabase.auth.resetPasswordForEmail(
+        emailLower,
+        {
+          redirectTo:
+            `${window.location.origin}/restablecer-contrasena`,
+        }
+      );
+
     if (error) {
-      setErrorMsg("No se pudo enviar el correo de recuperación: " + error.message);
-      return;
+      console.error(
+        "Error al solicitar recuperación:",
+        error.code,
+        error.message
+      );
     }
-    setInfoMsg("Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.");
-  };
+
+    setInfoMsg(
+      "Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña. Revisa también Spam."
+    );
+  } catch (err) {
+    console.error("Error de conexión:", err);
+    setErrorMsg(
+      "No se pudo procesar la solicitud. Inténtalo más tarde."
+    );
+  } finally {
+    setCargando(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-[#f0f4f8] p-4 font-sans select-none antialiased">
