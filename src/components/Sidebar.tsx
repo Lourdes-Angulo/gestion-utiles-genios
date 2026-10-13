@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 import { useApp } from "../context/AppContext";
 import {
   LayoutDashboard,
@@ -32,6 +33,54 @@ interface SidebarProps {
 
 export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: SidebarProps) {
   const { alertas, recepciones, configuracionColegio, usuarioActivo } = useApp();
+  
+const [esAdministrador, setEsAdministrador] = useState(false);
+
+useEffect(() => {
+  let activo = true;
+
+  const verificarRol = async () => {
+    // Ocultar módulos administrativos hasta comprobar el rol.
+    if (activo) setEsAdministrador(false);
+
+    const { data: authData, error: authError } =
+      await supabase.auth.getUser();
+
+    if (authError || !authData.user || !activo) return;
+
+    const { data: perfil, error } = await supabase
+      .from("usuarios")
+      .select("rol, estado")
+      .eq("authUserId", authData.user.id)
+      .maybeSingle();
+
+    if (!activo) return;
+
+    if (error) {
+      console.error("No se pudo consultar el rol institucional");
+      return;
+    }
+
+    setEsAdministrador(
+      perfil?.rol === "Administrador" &&
+      perfil?.estado === "Activo"
+    );
+  };
+
+  void verificarRol();
+
+  const { data: { subscription } } =
+    supabase.auth.onAuthStateChange(() => {
+      void verificarRol();
+    });
+
+  return () => {
+    activo = false;
+    subscription.unsubscribe();
+  };
+}, []);
+
+  console.log("Rol cargado en Sidebar:", usuarioActivo?.rol);
 
   const alertasActivasCount = alertas.filter(al => !al.resuelta).length;
   const recepcionesPendientesCount = recepciones.filter(rc => rc.estado === "Pendiente").length;
@@ -78,10 +127,10 @@ export default function Sidebar({ vistaActiva, setVistaActiva, onLogout }: Sideb
         
         {menuItems
           .filter(
-            (item) =>
-              !["usuarios", "auditoria"].includes(item.id) ||
-              usuarioActivo.rol === "Administrador"
-          )
+  (item) =>
+    !["usuarios", "auditoria"].includes(item.id) ||
+    esAdministrador
+)
           .map((item) => {
             const Icon = item.icon;
             const isActive = vistaActiva === item.id;
