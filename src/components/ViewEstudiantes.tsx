@@ -52,6 +52,8 @@ export default function ViewEstudiantes() {
   // Estado de la búsqueda por DNI
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [mensajeDni, setMensajeDni] = useState("");
+  // Confirmación interna; no reemplaza el consentimiento documentado del representante.
+  const [autorizacionDatos, setAutorizacionDatos] = useState(false);
 
   const [mensajeExito, setMensajeExito] = useState("");
 
@@ -69,6 +71,7 @@ export default function ViewEstudiantes() {
     setFormApoderadoNombre("");
     setFormApoderadoSecundarioNombre("");
     setMensajeDni("");
+    setAutorizacionDatos(false);
     setMostrarModalRegistro(true);
   };
 
@@ -83,6 +86,7 @@ export default function ViewEstudiantes() {
     setFormApoderadoNombre(est.apoderadoNombre || "");
     setFormApoderadoSecundarioNombre(est.apoderadoSecundarioNombre || "");
     setMensajeDni("");
+    setAutorizacionDatos(false);
     setMostrarModalRegistro(true);
   };
 
@@ -91,9 +95,13 @@ export default function ViewEstudiantes() {
     setMostrarModalDetalle(true);
   };
 
-  // Consulta el DNI en RENIEC (a través de la Edge Function de Supabase)
+  // Consulta el DNI a través de la Edge Function de Supabase
   // y autocompleta nombres y apellidos.
   const handleBuscarDni = async () => {
+    if (!autorizacionDatos) {
+      setMensajeDni("Confirma primero que la institución cuenta con la autorización o base legal correspondiente.");
+      return;
+    }
     const dniLimpio = formDni.trim();
     if (!/^\d{8}$/.test(dniLimpio)) {
       setMensajeDni("El DNI debe tener 8 dígitos.");
@@ -123,6 +131,10 @@ export default function ViewEstudiantes() {
 
   const handleGuardar = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!autorizacionDatos) {
+      setMensajeDni("Debes confirmar el cumplimiento de protección de datos antes de guardar.");
+      return;
+    }
     if (!formNombres.trim() || !formApellidos.trim()) return;
 
     const apoderadoNombre = formApoderadoNombre.trim() || "No asignado";
@@ -370,7 +382,35 @@ export default function ViewEstudiantes() {
             </div>
 
             <form onSubmit={handleGuardar} className="p-6 space-y-4 text-xs font-semibold">
-              {/* DNI con búsqueda automática en RENIEC */}
+              {/* Confirmación de protección de datos antes de consultar o guardar */}
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5">
+                <p className="font-bold text-emerald-900 mb-2 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4" /> Protección de datos personales
+                </p>
+                <label className="flex items-start gap-2.5 cursor-pointer text-slate-700 leading-relaxed font-medium">
+                  <input
+                    type="checkbox"
+                    checked={autorizacionDatos}
+                    onChange={(e) => {
+                      setAutorizacionDatos(e.target.checked);
+                      setMensajeDni("");
+                    }}
+                    className="mt-0.5 h-4 w-4 accent-emerald-600 shrink-0"
+                  />
+                  <span>
+                    Confirmo que la institución ha informado sobre la finalidad de
+                    gestión escolar y cuenta con la autorización del representante
+                    legal o con la base legal aplicable para consultar y tratar
+                    los datos personales del estudiante.
+                  </span>
+                </label>
+                <p className="text-[10px] text-slate-500 font-normal mt-2">
+                  Confirmación realizada por el personal de la institución. No sustituye
+                  el aviso de privacidad ni la evidencia de autorización correspondiente.
+                </p>
+              </div>
+
+              {/* DNI con búsqueda automática mediante la Edge Function */}
               <div>
                 <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">DNI del Estudiante</label>
                 <div className="flex gap-2">
@@ -392,7 +432,7 @@ export default function ViewEstudiantes() {
                   <button
                     type="button"
                     onClick={handleBuscarDni}
-                    disabled={buscandoDni}
+                    disabled={buscandoDni || !autorizacionDatos}
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap"
                   >
                     <Search className="w-4 h-4" />
@@ -400,7 +440,11 @@ export default function ViewEstudiantes() {
                   </button>
                 </div>
                 {mensajeDni && (
-                  <p className="text-[10px] text-amber-600 font-semibold mt-1.5">{mensajeDni}</p>
+                  <p className={`text-[10px] font-semibold mt-1.5 ${
+                    mensajeDni === "Datos encontrados y autocompletados."
+                      ? "text-emerald-700"
+                      : "text-red-600"
+                  }`}>{mensajeDni}</p>
                 )}
                 <p className="text-[10px] text-slate-400 font-medium mt-1.5">
                   Escribe el DNI y presiona Buscar para autocompletar los nombres. Si no lo encuentra, puedes llenarlos a mano.
@@ -513,7 +557,8 @@ export default function ViewEstudiantes() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2 font-bold"
+                  disabled={!autorizacionDatos}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2 font-bold"
                 >
                   <Check className="w-4.5 h-4.5" />
                   {esEdicion ? "Guardar Cambios" : "Completar Registro"}
