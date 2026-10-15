@@ -15,6 +15,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import IndicadorSeguridadContrasena from "./IndicadorSeguridadContrasena";
+import { evaluarContrasena } from "../lib/passwordPolicy";
 
 interface Perfil {
   nombre: string;
@@ -248,9 +250,9 @@ export default function ViewMiPerfil() {
       return;
     }
 
-    if (nuevaContrasena.length < 12) {
+    if (!evaluarContrasena(nuevaContrasena).esValida) {
       setError(
-        "La contraseña debe tener al menos 12 caracteres."
+        "La nueva contraseña debe tener al menos 12 caracteres, una mayúscula, una minúscula, un número, un símbolo y no contener espacios."
       );
       return;
     }
@@ -558,6 +560,13 @@ export default function ViewMiPerfil() {
                   </div>
                 ))}
 
+                <IndicadorSeguridadContrasena contrasena={nuevaContrasena} />
+                {confirmarContrasena && (
+                  <p className={`text-xs font-medium ${nuevaContrasena === confirmarContrasena ? "text-emerald-700" : "text-red-600"}`}>
+                    {nuevaContrasena === confirmarContrasena ? "Las contraseñas coinciden." : "Las contraseñas no coinciden."}
+                  </p>
+                )}
+
                 <button
                   type="button"
                   onClick={() =>
@@ -578,7 +587,7 @@ export default function ViewMiPerfil() {
 
                 <button
                   type="submit"
-                  disabled={guardando}
+                  disabled={guardando || !contrasenaActual || !evaluarContrasena(nuevaContrasena).esValida || nuevaContrasena !== confirmarContrasena || nuevaContrasena === contrasenaActual}
                   className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
                   <Save size={18} />

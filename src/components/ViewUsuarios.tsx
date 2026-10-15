@@ -1,106 +1,340 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Users, Lock, UserPlus, RefreshCw, Search, AlertCircle, CheckCircle2, X, ShieldCheck, Pencil, UserX, UserCheck, KeyRound, Eye, EyeOff, Camera, ImagePlus } from "lucide-react";
+import { supabase } from "../lib/supabaseClient";
+import IndicadorSeguridadContrasena from "./IndicadorSeguridadContrasena";
+import { evaluarContrasena } from "../lib/passwordPolicy";
 
-import React from "react";
-import { useApp } from "../context/AppContext";
-import { Usuario } from "../types";
-import {
-  Users,
-  Lock,
-  Info
-} from "lucide-react";
+type Rol = "Administrador" | "Secretaria" | "Profesora" | "Auxiliar";
+type Estado = "Activo" | "Inactivo";
+type PerfilUsuario = {
+  id: string;
+  nombre: string;
+  correo: string;
+  rol: Rol | string;
+  estado: Estado | string;
+  authUserId: string | null;
+  dni: string | null;
+  origen_nombre: "api" | "manual" | null;
+};
+type Modo = "crear" | "editar" | "clave" | null;
+const roles = ["Secretaria", "Profesora", "Auxiliar"] as const;
+type RolEditable = (typeof roles)[number];
+const esRolEditable = (v: string): v is RolEditable => roles.some((r) => r === v);
+
+// Debe coincidir con la política de las pantallas Mi Perfil y Restablecer.
+const claveValida = (v: string) => evaluarContrasena(v).esValida;
+
+function detallesRol(rol: string): string {
+  switch (rol) {
+    case "Administrador": return "Administración, gestión de usuarios y auditoría.";
+    case "Secretaria": case "Secretaría": return "Gestión administrativa de estudiantes, listas y recepción.";
+    case "Profesora": return "Seguimiento de estudiantes y útiles según los permisos asignados.";
+    case "Auxiliar": return "Registro de recepción y control de útiles según los permisos asignados.";
+    default: return "Pendiente de configuración.";
+  }
+}
+
+async function invocarAccion(funcion: string, body: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke(funcion, { body });
+  if (error) {
+    let mensaje = `No se pudo completar la operación (${funcion}).`;
+    if (error.context instanceof Response) {
+      const contenido = await error.context.clone().json().catch(() => null);
+      if (typeof contenido?.error === "string") mensaje = contenido.error;
+    }
+    throw new Error(mensaje);
+  }
+  if (!data?.ok) throw new Error(typeof data?.error === "string" ? data.error : "El servidor no confirmó la operación.");
+  return data;
+}
 
 export default function ViewUsuarios() {
-  const { usuarios, usuarioActivo } = useApp();
+  const [autorizado, setAutorizado] = useState(false);
+  const [verificando, setVerificando] = useState(true);
+  const [cargando, setCargando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [buscandoDni, setBuscandoDni] = useState(false);
+  const [usuarios, setUsuarios] = useState<PerfilUsuario[]>([]);
+  const [miAuthId, setMiAuthId] = useState<string | null>(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [modo, setModo] = useState<Modo>(null);
+  const [seleccionado, setSeleccionado] = useState<PerfilUsuario | null>(null);
+  const [dni, setDni] = useState("");
+  const [origenNombre, setOrigenNombre] = useState<"api" | "manual" | null>("manual");
+  const [nombre, setNombre] = useState("");
+  const [correo, setCorreo] = useState("");
+  const [rol, setRol] = useState<RolEditable>("Secretaria");
+  const [clave, setClave] = useState("");
+  const [mostrarClave, setMostrarClave] = useState(false);
+  const [foto, setFoto] = useState<File | null>(null);
+  const [fotoVistaPrevia, setFotoVistaPrevia] = useState<string | null>(null);
+  useEffect(() => {
+    if (!foto) { setFotoVistaPrevia(null); return; }
+    const url = URL.createObjectURL(foto);
+    setFotoVistaPrevia(url);
+    return () => URL.revokeObjectURL(url);
+  }, [foto]);
 
-  const getPermisosDescripcion = (rol: Usuario["rol"]) => {
-    switch (rol) {
-      case "Administrador":
-        return "Acceso total e irrestricto a todos los módulos, gestión de almacén, base de datos y administración de usuarios.";
-      case "Secretaria":
-        return "Gestión de matrículas (Estudiantes), control de recepciones, listas de útiles y consulta de stock.";
-      default:
-        return "Sin permisos asignados.";
+  const seleccionarFoto = (archivo?: File) => {
+    if (!archivo) return;
+    if (!archivo.type.startsWith("image/") || archivo.size > 2 * 1024 * 1024) {
+      setError("Selecciona una imagen JPG, PNG o WebP de máximo 2 MB.");
+      return;
     }
+    setError("");
+    setFoto(archivo);
+  };
+  const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+
+  const cargarUsuarios = useCallback(async () => {
+    setCargando(true);
+    try {
+      const { data, error: errorLista } = await supabase.from("usuarios")
+        .select('id, nombre, correo, rol, estado, authUserId, dni, origen_nombre').order("nombre", { ascending: true });
+      if (errorLista) throw errorLista;
+      setUsuarios((data ?? []) as PerfilUsuario[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudieron cargar los usuarios.");
+    } finally { setCargando(false); }
+  }, []);
+
+  useEffect(() => {
+    let activo = true;
+    const verificar = async () => {
+      try {
+        const { data: auth, error: errorAuth } = await supabase.auth.getUser();
+        if (errorAuth || !auth.user) throw new Error("Debes iniciar sesión.");
+        const { data: perfil, error: errorPerfil } = await supabase.from("usuarios")
+          .select("rol, estado").eq("authUserId", auth.user.id).maybeSingle();
+        if (errorPerfil) throw errorPerfil;
+        if (!activo) return;
+        setMiAuthId(auth.user.id);
+        if (perfil?.rol !== "Administrador" || perfil?.estado !== "Activo") {
+          setAutorizado(false);
+          setError("Solo el Administrador puede gestionar usuarios.");
+          return;
+        }
+        setAutorizado(true);
+        await cargarUsuarios();
+      } catch (err) {
+        if (activo) { setAutorizado(false); setError(err instanceof Error ? err.message : "No se pudo verificar la sesión."); }
+      } finally { if (activo) setVerificando(false); }
+    };
+    void verificar();
+    return () => { activo = false; };
+  }, [cargarUsuarios]);
+
+  const abrirNuevo = () => {
+    setSeleccionado(null); setDni(""); setOrigenNombre("manual"); setNombre(""); setCorreo(""); setRol("Secretaria"); setClave("");
+    setMostrarClave(false); setFoto(null); setError(""); setMensaje(""); setModo("crear");
+  };
+  const abrirEditar = (u: PerfilUsuario) => {
+    setSeleccionado(u); setNombre(u.nombre); setCorreo(u.correo);
+    setOrigenNombre(u.origen_nombre);
+    setRol(esRolEditable(u.rol) ? u.rol : "Secretaria");
+    setDni(u.dni ?? ""); setClave(""); setFoto(null); setError(""); setMensaje(""); setModo("editar");
+  };
+  const abrirClave = (u: PerfilUsuario) => {
+    setSeleccionado(u); setClave(""); setMostrarClave(false); setFoto(null); setError(""); setMensaje(""); setModo("clave");
   };
 
+  const buscarDni = async () => {
+    if (!/^\d{8}$/.test(dni)) { setError("El DNI debe contener 8 dígitos."); return; }
+    setError(""); setBuscandoDni(true);
+    setOrigenNombre("manual");
+    try {
+      // Reutiliza la Edge Function protegida existente en SIGUE.
+      const { data, error: fallo } = await supabase.functions.invoke("consulta-dni", { body: { dni } });
+      if (fallo || !data?.nombres) throw new Error("No se encontraron datos del DNI. Puedes ingresarlos manualmente.");
+      const nombreCompleto = [data.nombres, data.apellidoPaterno, data.apellidoMaterno].filter(Boolean).join(" ").trim();
+      if (!nombreCompleto) throw new Error("No se encontraron nombres completos.");
+      setNombre(nombreCompleto);
+      setOrigenNombre("api");
+    } catch (err) { setError(err instanceof Error ? err.message : "No se pudo consultar el DNI."); }
+    finally { setBuscandoDni(false); }
+  };
+
+  const guardar = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!autorizado || guardando || !modo) return;
+    setError(""); setMensaje("");
+    if (modo !== "clave") {
+      if (nombre.trim().length < 3) { setError("Ingresa el nombre completo."); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())) { setError("Ingresa un correo válido."); return; }
+    }
+    if ((modo === "crear" || modo === "clave") && !claveValida(clave)) {
+      setError("La contraseña provisional debe tener al menos 12 caracteres, mayúscula, minúscula, número y símbolo, sin espacios."); return;
+    }
+    setGuardando(true);
+    try {
+      if (modo === "crear") {
+        await invocarAccion("crear-usuario", {
+          dni: dni || null, origenNombre, nombre: nombre.trim(), correo: correo.trim().toLowerCase(), rol,
+          contrasenaProvisional: clave,
+        });
+        setMensaje("Usuario creado. Debe cambiar su contraseña provisional al iniciar sesión.");
+      } else if (modo === "editar" && seleccionado) {
+        if (seleccionado.rol === "Administrador") throw new Error("No se puede modificar un Administrador desde este formulario.");
+        await invocarAccion("administrar-usuario", {
+          accion: "editar", usuarioId: seleccionado.id, dni: dni || null, origenNombre, nombre: nombre.trim(), correo: correo.trim().toLowerCase(), rol,
+        });
+        setMensaje("Usuario actualizado correctamente.");
+      } else if (modo === "clave" && seleccionado) {
+        if (seleccionado.rol === "Administrador") throw new Error("No se puede restablecer una cuenta Administrador desde este formulario.");
+        await invocarAccion("administrar-usuario", {
+          accion: "restablecer-clave", usuarioId: seleccionado.id, contrasenaProvisional: clave,
+        });
+        setMensaje("Contraseña provisional asignada. Se requerirá cambiarla en el siguiente inicio de sesión.");
+      }
+      setClave(""); setModo(null); setSeleccionado(null);
+      await cargarUsuarios();
+    } catch (err) { setError(err instanceof Error ? err.message : "No se pudo guardar."); }
+    finally { setGuardando(false); }
+  };
+
+  const alternarEstado = async (u: PerfilUsuario) => {
+    if (!autorizado || guardando) return;
+    if (u.rol === "Administrador" || u.authUserId === miAuthId) { setError("No se puede inhabilitar la cuenta del Administrador desde esta opción."); return; }
+    const nuevoEstado: Estado = u.estado === "Activo" ? "Inactivo" : "Activo";
+    if (!window.confirm(`¿Confirmas ${nuevoEstado === "Inactivo" ? "inhabilitar" : "habilitar"} la cuenta de ${u.nombre}?`)) return;
+    setGuardando(true); setError(""); setMensaje("");
+    try {
+      await invocarAccion("administrar-usuario", { accion: "cambiar-estado", usuarioId: u.id, estado: nuevoEstado });
+      setMensaje(`Usuario ${nuevoEstado === "Activo" ? "habilitado" : "inhabilitado"} correctamente.`);
+      await cargarUsuarios();
+    } catch (err) { setError(err instanceof Error ? err.message : "No se pudo actualizar el estado."); }
+    finally { setGuardando(false); }
+  };
+
+  const filtrados = usuarios.filter((u) => `${u.nombre} ${u.correo} ${u.rol} ${u.estado}`.toLowerCase().includes(busqueda.trim().toLowerCase()));
+  const activos = usuarios.filter((u) => u.estado === "Activo").length;
   return (
-    <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8] text-xs font-semibold">
-
-      {/* Control Panel / Header */}
-      <div className="glass-card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Lock className="w-5 h-5 text-emerald-600 shrink-0" />
-          <div>
-            <h4 className="font-bold text-slate-800 text-sm">Usuarios y Permisos</h4>
-            <p className="text-[11px] text-slate-400 mt-0.5">Roles del personal del colegio con acceso al sistema</p>
-          </div>
+    <div className="flex-1 overflow-y-auto bg-[#f0f4f8] p-5 text-slate-800 md:p-8">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div className="glass-card flex flex-wrap items-center justify-between gap-3 p-5">
+          <div className="flex items-center gap-3"><Lock className="h-6 w-6 text-emerald-600" /><div><h2 className="text-lg font-bold">Usuarios</h2><p className="text-sm text-slate-500">Personal autorizado para ingresar a SIGUE.</p></div></div>
+          {autorizado && <div className="flex gap-2"><button type="button" onClick={() => void cargarUsuarios()} disabled={cargando} className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm"><RefreshCw size={16} /> Actualizar</button><button type="button" onClick={abrirNuevo} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"><UserPlus size={17} /> Nuevo usuario</button></div>}
         </div>
+        {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><AlertCircle size={19} /><span>{error}</span></div>}
+        {mensaje && <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700"><CheckCircle2 size={19} /><span>{mensaje}</span></div>}
+        {verificando ? <p className="text-sm">Verificando permisos...</p> : autorizado ? <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="glass-card p-4"><p className="text-sm text-slate-500">Usuarios registrados</p><p className="text-2xl font-bold">{usuarios.length}</p></div>
+            <div className="glass-card p-4"><p className="text-sm text-slate-500">Activos</p><p className="text-2xl font-bold text-emerald-700">{activos}</p></div>
+            <div className="glass-card p-4"><p className="text-sm text-slate-500">Inactivos</p><p className="text-2xl font-bold">{usuarios.length - activos}</p></div>
+          </div>
+          <div className="glass-card space-y-4 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="flex items-center gap-2 text-base font-bold"><Users size={19} className="text-emerald-600" /> Listado de usuarios</h3><div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2"><Search size={17} className="text-slate-400" /><input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar usuario, correo o rol" aria-label="Buscar usuarios" className="w-56 max-w-full text-sm outline-none" /></div></div>
+            <div className="overflow-x-auto"><table className="w-full border-collapse text-left text-sm"><thead className="border-b bg-slate-50 text-slate-600"><tr><th className="p-3">Usuario</th><th className="p-3">Rol</th><th className="p-3">Estado</th><th className="p-3">Acceso</th><th className="p-3">Acciones</th></tr></thead><tbody>{filtrados.map((u) => <tr key={u.id} className="border-b border-slate-100"><td className="p-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700" aria-hidden="true">{u.nombre.trim().split(/\s+/).slice(0, 2).map((parte) => parte[0]).join("").toUpperCase()}</div><div><div className="font-bold">{u.nombre}{u.authUserId === miAuthId && <span className="ml-2 text-xs text-emerald-600">(Tú)</span>}</div><div className="break-all text-xs text-slate-500">{u.correo}</div></div></div></td><td className="p-3"><p className="font-semibold">{u.rol === "Secretaria" ? "Secretaría" : u.rol}</p><p className="max-w-xs text-xs text-slate-500">{detallesRol(u.rol)}</p></td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${u.estado === "Activo" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{u.estado}</span></td><td className="p-3 text-xs">{u.authUserId ? "Vinculado" : "Sin vincular"}</td><td className="p-3">{u.rol !== "Administrador" && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => abrirEditar(u)} title="Editar usuario" aria-label={`Editar ${u.nombre}`} className="rounded-lg border p-2 hover:bg-slate-50"><Pencil size={16} /></button><button type="button" onClick={() => abrirClave(u)} title="Asignar contraseña provisional" aria-label={`Cambiar contraseña de ${u.nombre}`} className="rounded-lg border p-2 hover:bg-slate-50"><KeyRound size={16} /></button><button type="button" disabled={guardando} onClick={() => void alternarEstado(u)} title={u.estado === "Activo" ? "Inhabilitar" : "Habilitar"} aria-label={`Cambiar estado de ${u.nombre}`} className="rounded-lg border p-2 hover:bg-slate-50">{u.estado === "Activo" ? <UserX size={16} /> : <UserCheck size={16} />}</button></div>}</td></tr>)}</tbody></table>{!cargando && filtrados.length === 0 && <p className="p-5 text-center text-sm text-slate-500">No se encontraron usuarios.</p>}{cargando && <p className="p-4 text-sm">Actualizando usuarios...</p>}</div>
+          </div>
+        </> : <div className="glass-card flex gap-3 p-5 text-sm"><ShieldCheck className="text-emerald-600" size={20} /> Solo el Administrador puede consultar esta pantalla.</div>}
       </div>
-
-      {/* Nota informativa sobre la gestión de cuentas */}
-      <div className="glass-card p-4 flex items-start gap-3 bg-indigo-50/30 border-l-4 border-indigo-300">
-        <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-        <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-          Esta sección muestra los perfiles y sus niveles de acceso. La creación de nuevas cuentas y el cambio
-          de contraseñas se gestionan de forma segura desde el panel de administración del sistema (Supabase),
-          para garantizar el manejo protegido de las credenciales.
-        </p>
-      </div>
-
-      {/* Users grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {usuarios.map((usr) => {
-          const esMismoUsuario = usr.id === usuarioActivo.id;
-          return (
-            <div
-              key={usr.id}
-              className={`glass-card p-6 flex flex-col justify-between gap-4 relative transition-all duration-200 ${esMismoUsuario ? "ring-2 ring-emerald-500/20 bg-emerald-50/5 border-l-4 border-l-emerald-600" : "border-l-4 border-l-slate-400"
-                }`}
-            >
-
-              {/* Top Row: Info and state badge */}
-              <div className="flex justify-between items-start">
-                <div className="flex gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-slate-150 flex items-center justify-center font-black text-slate-700 text-sm border border-slate-200 shrink-0">
-                    {usr.nombre.substring(0, 2).toUpperCase()}
-                  </div>
-
-                  <div>
-                    <h4 className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
-                      {usr.nombre}
-                      {esMismoUsuario && (
-                        <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-black text-[9px] uppercase tracking-wider">
-                          Tú
-                        </span>
-                      )}
-                    </h4>
-                    <span className="text-[10px] text-slate-400 font-bold block mt-0.5 font-mono">{usr.correo}</span>
-                  </div>
-                </div>
-
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${usr.estado === "Activo" ? "bg-emerald-100 text-emerald-800" : "bg-slate-150 text-slate-500"
-                  }`}>
-                  {usr.estado}
-                </span>
-              </div>
-
-              {/* Middle Row: Permissions details */}
-              <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-150/50 text-[11px] text-slate-500 space-y-2">
-                <div className="flex justify-between border-b border-slate-200/50 pb-1.5">
-                  <span className="text-slate-400 uppercase tracking-wide font-bold">Rol de Acceso:</span>
-                  <span className="text-emerald-800 font-extrabold">{usr.rol}</span>
-                </div>
-                <p className="font-semibold leading-relaxed text-slate-600">{getPermisosDescripcion(usr.rol)}</p>
-              </div>
-
+      {modo && autorizado && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3 md:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={modo === "crear" ? "Registrar usuario" : modo === "editar" ? "Editar usuario" : "Cambiar contraseña"}
+        >
+          <form
+            onSubmit={(e) => void guardar(e)}
+            className={`my-auto w-full space-y-5 rounded-2xl bg-white p-5 shadow-xl md:p-7 ${modo === "clave" ? "max-w-xl" : "max-w-5xl"}`}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-800">
+                <UserPlus className="text-emerald-600" size={21} />
+                {modo === "crear" ? "Registrar nuevo usuario" : modo === "editar" ? "Editar usuario" : "Asignar contraseña provisional"}
+              </h3>
+              <button type="button" onClick={() => setModo(null)} disabled={guardando} aria-label="Cerrar"><X size={20} /></button>
             </div>
-          );
-        })}
-      </div>
 
+            {modo === "clave" ? (
+              <div className="space-y-4">
+                <label className="block text-sm font-semibold">Contraseña provisional
+                  <div className="relative mt-1">
+                    <input required type={mostrarClave ? "text" : "password"} autoComplete="new-password" value={clave} onChange={(e) => setClave(e.target.value)} disabled={guardando} className="w-full rounded-xl border p-3 pr-12 font-normal" />
+                    <button type="button" onClick={() => setMostrarClave(!mostrarClave)} aria-label={mostrarClave ? "Ocultar contraseña" : "Mostrar contraseña"} className="absolute right-3 top-3 text-slate-600">{mostrarClave ? <EyeOff size={19} /> : <Eye size={19} />}</button>
+                  </div>
+                </label>
+                <IndicadorSeguridadContrasena contrasena={clave} />
+                <p className="text-xs text-slate-500">La persona deberá cambiar esta contraseña en su primer acceso. Entrégala mediante un canal seguro.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
+                <section className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800">Datos personales y acceso</h4>
+                  {(modo === "crear" || modo === "editar") && (
+                    <label className="block text-sm font-semibold">DNI
+                      <div className="mt-1 flex gap-2">
+                        <input inputMode="numeric" maxLength={8} value={dni} onChange={(e) => { setDni(e.target.value.replace(/\D/g, "")); setOrigenNombre("manual"); }} readOnly={modo === "editar" && seleccionado?.origen_nombre === "api"} placeholder="8 dígitos" className={`min-w-0 flex-1 rounded-xl border p-3 font-normal ${modo === "editar" && seleccionado?.origen_nombre === "api" ? "bg-slate-100" : ""}`} />
+                        <button type="button" onClick={() => void buscarDni()} disabled={buscandoDni || guardando || dni.length !== 8 || (modo === "editar" && seleccionado?.origen_nombre === "api")} className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-50">{buscandoDni ? "Buscando..." : "Buscar"}</button>
+                      </div>
+                    </label>
+                  )}
+                  <label className="block text-sm font-semibold">Nombre completo
+                    <input required minLength={3} maxLength={160} value={nombre}
+                      onChange={(e) => { setNombre(e.target.value); setOrigenNombre("manual"); }}
+                      readOnly={origenNombre === "api"}
+                      disabled={guardando}
+                      className={`mt-1 w-full rounded-xl border p-3 font-normal ${origenNombre === "api" ? "cursor-not-allowed bg-slate-100 text-slate-600" : ""}`} />
+                    <span className="mt-1 block text-xs font-normal text-slate-500">
+                      {origenNombre === "api" ? "Nombre obtenido por consulta DNI; no se modifica manualmente." :
+                        origenNombre === null ? "Origen del nombre no identificado. Puedes consultarlo con el DNI para verificarlo." :
+                        "Nombre ingresado manualmente; puedes corregirlo."}
+                    </span>
+                  </label>
+                  <label className="block text-sm font-semibold">Correo electrónico
+                    <input required type="email" maxLength={254} value={correo} onChange={(e) => setCorreo(e.target.value)} disabled={guardando} className="mt-1 w-full rounded-xl border p-3 font-normal" />
+                  </label>
+
+                </section>
+
+                <section className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800">Foto de perfil {modo === "crear" ? "y seguridad" : ""}</h4>
+                  <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-emerald-100 text-2xl font-bold text-emerald-700 shadow-sm">
+                      {fotoVistaPrevia ? <img src={fotoVistaPrevia} alt="Vista previa de la foto" className="h-full w-full object-cover" /> : <span aria-label="Avatar predeterminado">{nombre.trim() ? nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase() : <Camera size={28} />}</span>}
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <label htmlFor="foto-usuario" className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"><ImagePlus size={16} /> Subir imagen</label>
+                      <input id="foto-usuario" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={guardando} onChange={(e) => seleccionarFoto(e.target.files?.[0])} />
+                      <p className="text-xs font-normal text-slate-500">JPG, PNG o WebP · máximo 2 MB.</p>
+                      {foto && <><p className="max-w-[220px] truncate text-xs text-emerald-700">{foto.name}</p><button type="button" onClick={() => setFoto(null)} className="text-xs font-semibold text-slate-600 underline">Quitar imagen</button></>}
+                      <p className="text-xs font-normal text-amber-700">Vista previa; falta conectar el guardado de fotos.</p>
+                    </div>
+                  </div>
+                  <label className="block text-sm font-semibold">Rol
+                    <select value={rol} onChange={(e) => setRol(e.target.value as RolEditable)} disabled={guardando} className="mt-1 w-full rounded-xl border bg-white p-3 font-normal">
+                      <option value="Secretaria">Secretaría</option>
+                      <option value="Profesora">Profesora</option>
+                      <option value="Auxiliar">Auxiliar</option>
+                    </select>
+                  </label>
+                  {modo === "crear" && (
+                    <div className="space-y-3">
+                      <label className="block text-sm font-semibold">Contraseña provisional
+                        <div className="relative mt-1">
+                          <input required type={mostrarClave ? "text" : "password"} autoComplete="new-password" value={clave} onChange={(e) => setClave(e.target.value)} disabled={guardando} className="w-full rounded-xl border p-3 pr-12 font-normal" />
+                          <button type="button" onClick={() => setMostrarClave(!mostrarClave)} aria-label={mostrarClave ? "Ocultar contraseña" : "Mostrar contraseña"} className="absolute right-3 top-3 text-slate-600">{mostrarClave ? <EyeOff size={19} /> : <Eye size={19} />}</button>
+                        </div>
+                      </label>
+                      <IndicadorSeguridadContrasena contrasena={clave} />
+                      <p className="text-xs text-slate-500">La persona deberá cambiar esta contraseña al iniciar sesión por primera vez.</p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
+
+            {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <button type="button" onClick={() => setModo(null)} disabled={guardando} className="rounded-xl border px-4 py-2 text-sm">Cancelar</button>
+              <button type="submit" disabled={guardando || ((modo === "crear" || modo === "clave") && !claveValida(clave))} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{guardando ? "Guardando..." : modo === "crear" ? "Registrar usuario" : modo === "editar" ? "Guardar cambios" : "Asignar contraseña"}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

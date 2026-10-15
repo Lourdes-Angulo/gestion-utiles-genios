@@ -13,6 +13,8 @@ import {
   escucharSesionRecuperacion,
   limpiarSesionRecuperacion,
 } from "../lib/supabaseClient";
+import IndicadorSeguridadContrasena from "./IndicadorSeguridadContrasena";
+import { evaluarContrasena } from "../lib/passwordPolicy";
 
 export default function ViewRestablecerContrasena() {
   const [nueva, setNueva] = useState("");
@@ -61,9 +63,9 @@ export default function ViewRestablecerContrasena() {
       return;
     }
 
-    if (nueva.length < 12) {
+    if (!evaluarContrasena(nueva).esValida) {
       setError(
-        "La contraseña debe tener al menos 12 caracteres."
+        "La contraseña debe tener al menos 12 caracteres, una mayúscula, una minúscula, un número, un símbolo y no contener espacios."
       );
       return;
     }
@@ -194,6 +196,8 @@ export default function ViewRestablecerContrasena() {
               />
             </div>
 
+            <IndicadorSeguridadContrasena contrasena={nueva} />
+
             <div>
               <label
                 htmlFor="confirmar-contrasena"
@@ -215,6 +219,12 @@ export default function ViewRestablecerContrasena() {
               />
             </div>
 
+            {confirmacion && (
+              <p className={`text-xs font-medium ${nueva === confirmacion ? "text-emerald-700" : "text-red-600"}`}>
+                {nueva === confirmacion ? "Las contraseñas coinciden." : "Las contraseñas no coinciden."}
+              </p>
+            )}
+
             <button
               type="button"
               onClick={() => setMostrar((anterior) => !anterior)}
@@ -233,7 +243,7 @@ export default function ViewRestablecerContrasena() {
 
             <button
               type="submit"
-              disabled={cargando}
+              disabled={cargando || !evaluarContrasena(nueva).esValida || nueva !== confirmacion}
               className="w-full rounded-xl bg-emerald-600 p-3 font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {cargando
