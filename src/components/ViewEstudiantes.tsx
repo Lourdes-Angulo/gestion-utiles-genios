@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { supabase } from "../lib/supabaseClient";
 import { Estudiante } from "../types";
@@ -27,7 +27,8 @@ export default function ViewEstudiantes() {
     registrarEstudiante,
     editarEstudiante,
     desactivarEstudiante,
-    usuarioActivo
+    usuarioActivo,
+    usuarios
   } = useApp();
 
   const [filtroBusqueda, setFiltroBusqueda] = useState("");
@@ -56,18 +57,33 @@ export default function ViewEstudiantes() {
   const [autorizacionDatos, setAutorizacionDatos] = useState(false);
 
   const [mensajeExito, setMensajeExito] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const guardandoRef = useRef(false);
 
   // Check roles permissions
-  const puedeRegistrar = ["Administrador", "Secretaria"].includes(usuarioActivo.rol);
-  const esAdmin = usuarioActivo.rol === "Administrador";
+  // Perfil auténtico recuperado mediante RLS; no autorizar por mockData.
+  const perfil = usuarios.find(u => u.id === usuarioActivo.id) as
+    | (typeof usuarioActivo & { nivel_asignado?: string | null; aula_asignada?: string | null })
+    | undefined;
+  const rol = perfil?.rol;
+  const esPersonal = rol === "Profesora" || rol === "Auxiliar";
+  const nivelAsignado = perfil?.nivel_asignado ?? null;
+  const aulaAsignada = perfil?.aula_asignada ?? null;
+  const asignacionValida = Boolean(nivelAsignado && (rol !== "Profesora" || aulaAsignada));
+  const puedeRegistrar = Boolean(rol && ["Administrador", "Secretaria", "Profesora", "Auxiliar"].includes(rol) && (!esPersonal || asignacionValida));
+  const esAdmin = rol === "Administrador";
+  const puedeVerEstudiante = (est: Estudiante) => !esPersonal ||
+    (asignacionValida && est.nivel === nivelAsignado &&
+      (rol !== "Profesora" || est.grado === aulaAsignada));
 
   const handleAbrirRegistro = () => {
+    if (!puedeRegistrar) return;
     setEsEdicion(false);
     setFormDni("");
     setFormNombres("");
     setFormApellidos("");
-    setFormGrado("1er Grado");
-    setFormNivel("Primaria");
+    setFormGrado(rol === "Profesora" ? (aulaAsignada ?? "") : nivelAsignado === "Inicial" ? "3 años" : "1er Grado");
+    setFormNivel((esPersonal ? nivelAsignado : "Primaria") as "Inicial" | "Primaria");
     setFormApoderadoNombre("");
     setFormApoderadoSecundarioNombre("");
     setMensajeDni("");
@@ -76,6 +92,7 @@ export default function ViewEstudiantes() {
   };
 
   const handleAbrirEdicion = (est: Estudiante) => {
+    if (!puedeRegistrar || !puedeVerEstudiante(est)) return;
     setEsEdicion(true);
     setEstudianteSeleccionado(est);
     setFormDni(est.dni || "");
@@ -129,19 +146,39 @@ export default function ViewEstudiantes() {
     }
   };
 
-  const handleGuardar = (e: React.FormEvent) => {
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (guardandoRef.current) return;
     if (!autorizacionDatos) {
       setMensajeDni("Debes confirmar el cumplimiento de protección de datos antes de guardar.");
       return;
     }
     if (!formNombres.trim() || !formApellidos.trim()) return;
+    if (!puedeRegistrar || (esPersonal && (!asignacionValida || formNivel !== nivelAsignado ||
+      (rol === "Profesora" && formGrado !== aulaAsignada) ||
+      (esEdicion && estudianteSeleccionado && !puedeVerEstudiante(estudianteSeleccionado))))) {
+      setMensajeDni("No puedes registrar o modificar estudiantes fuera de tu asignación.");
+      return;
+    }
 
+    const dniNormalizado = formDni.trim();
+    if (!/^\d{8}$/.test(dniNormalizado)) {
+      setMensajeDni("Ingresa un DNI válido de 8 dígitos antes de guardar.");
+      return;
+    }
+    if (!esEdicion && estudiantes.some(e => e.dni?.trim() === dniNormalizado)) {
+      setMensajeDni("Ya existe un estudiante con ese DNI. Busca su ficha y edítala si necesitas actualizarla.");
+      return;
+    }
+    guardandoRef.current = true;
+    setGuardando(true);
+    setMensajeDni("");
     const apoderadoNombre = formApoderadoNombre.trim() || "No asignado";
     const apoderadoSecundarioNombre = formApoderadoSecundarioNombre.trim() || undefined;
 
+    try {
     if (esEdicion && estudianteSeleccionado) {
-      editarEstudiante({
+      await editarEstudiante({
         ...estudianteSeleccionado,
         dni: formDni.trim(),
         nombres: formNombres,
@@ -153,7 +190,7 @@ export default function ViewEstudiantes() {
       });
       setMensajeExito("Estudiante actualizado correctamente.");
     } else {
-      registrarEstudiante({
+      await registrarEstudiante({
         dni: formDni.trim(),
         nombres: formNombres,
         apellidos: formApellidos,
@@ -169,6 +206,12 @@ export default function ViewEstudiantes() {
 
     setMostrarModalRegistro(false);
     setTimeout(() => setMensajeExito(""), 4000);
+    } catch (error) {
+      setMensajeDni(error instanceof Error ? error.message : "Supabase rechazó la operación.");
+    } finally {
+      guardandoRef.current = false;
+      setGuardando(false);
+    }
   };
 
   // Filter lists
@@ -182,7 +225,7 @@ export default function ViewEstudiantes() {
     const cumpleGrado = filtroGrado === "" || est.grado === filtroGrado;
     const cumpleNivel = filtroNivel === "" || est.nivel === filtroNivel;
 
-    return cumpleBusqueda && cumpleGrado && cumpleNivel;
+    return puedeVerEstudiante(est) && cumpleBusqueda && cumpleGrado && cumpleNivel;
   });
 
   return (
@@ -481,6 +524,7 @@ export default function ViewEstudiantes() {
                   <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Nivel Educativo</label>
                   <select
                     value={formNivel}
+                    disabled={esPersonal}
                     onChange={(e) => {
                       const selectedNivel = e.target.value as "Inicial" | "Primaria";
                       setFormNivel(selectedNivel);
@@ -501,6 +545,7 @@ export default function ViewEstudiantes() {
                   <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Grado Académico</label>
                   <select
                     value={formGrado}
+                    disabled={rol === "Profesora"}
                     onChange={(e) => setFormGrado(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-emerald-500 focus:bg-white"
                   >
@@ -550,18 +595,19 @@ export default function ViewEstudiantes() {
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setMostrarModalRegistro(false)}
+                  onClick={() => { if (!guardandoRef.current) setMostrarModalRegistro(false); }}
+                  disabled={guardando}
                   className="px-4 py-2.5 border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={!autorizacionDatos}
+                  disabled={!autorizacionDatos || guardando}
                   className="disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2 font-bold"
                 >
                   <Check className="w-4.5 h-4.5" />
-                  {esEdicion ? "Guardar Cambios" : "Completar Registro"}
+                  {guardando ? "Guardando..." : esEdicion ? "Guardar Cambios" : "Completar Registro"}
                 </button>
               </div>
             </form>

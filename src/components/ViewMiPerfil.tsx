@@ -1,613 +1,325 @@
-
 import { useEffect, useState, type FormEvent } from "react";
+import { useUser } from "@clerk/react";
 import {
-  UserRound,
-  Mail,
-  ShieldCheck,
-  LockKeyhole,
-  Eye,
-  EyeOff,
-  Save,
-  AlertCircle,
-  CheckCircle2,
-  Clock3,
-  Send,
-  RefreshCw,
+  UserRound, Mail, ShieldCheck, LockKeyhole, Eye, EyeOff, Save,
+  AlertCircle, CheckCircle2, Clock3, RefreshCw, Send, Plus,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { useSupabaseClerk } from "../lib/useSupabaseClerk";
 import IndicadorSeguridadContrasena from "./IndicadorSeguridadContrasena";
 import { evaluarContrasena } from "../lib/passwordPolicy";
 
-interface Perfil {
-  nombre: string;
-  correo: string;
-  rol: string;
-  estado: string;
-}
+type Perfil = {
+  nombre: string | null;
+  correo: string | null;
+  dni: string | null;
+  rol: string | null;
+  estado: string | null;
+  codigo_institucional: string | null;
+  nivel_asignado: string | null;
+  aula_asignada: string | null;
+};
 
-interface EstadoCorreo {
+type EstadoCorreo = {
   correo_secundario: string | null;
   verificado: boolean;
-  fecha_verificacion: string | null;
   correo_pendiente: string | null;
-}
+};
+
+const caja = "rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 break-all";
+const entrada = "w-full max-w-lg rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 disabled:opacity-60";
 
 export default function ViewMiPerfil() {
+  const { cliente: clienteClerk, isLoaded, isSignedIn, clerkUserId } = useSupabaseClerk();
+  const { user: usuarioClerk } = useUser();
   const [perfil, setPerfil] = useState<Perfil | null>(null);
-  const [estadoCorreo, setEstadoCorreo] =
-    useState<EstadoCorreo | null>(null);
-
-  const [nuevoCorreo, setNuevoCorreo] = useState("");
+  const [proveedor, setProveedor] = useState<"clerk" | "supabase" | null>(null);
+  const [correoAuth, setCorreoAuth] = useState("");
+  const [correoVerificado, setCorreoVerificado] = useState(false);
+  const [estadoCorreo, setEstadoCorreo] = useState<EstadoCorreo | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
-  const [actualizandoCorreo, setActualizandoCorreo] =
-    useState(false);
+  const [actualizando, setActualizando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
-
-  const [contrasenaActual, setContrasenaActual] = useState("");
-  const [nuevaContrasena, setNuevaContrasena] = useState("");
-  const [confirmarContrasena, setConfirmarContrasena] =
-    useState("");
-  const [mostrarContrasenas, setMostrarContrasenas] =
-    useState(false);
-
-  // Consultar exclusivamente la información del usuario
-  // autenticado mediante la función SQL protegida.
-  const consultarEstadoCorreo = async () => {
-    const { data, error: errorConsulta } =
-      await supabase.rpc("obtener_mi_estado_correo");
-
-    if (errorConsulta) {
-      throw new Error(
-        "No se pudo consultar el correo secundario: " +
-          errorConsulta.message
-      );
-    }
-
-    const registro = Array.isArray(data)
-      ? data[0] ?? null
-      : data ?? null;
-
-    return registro as EstadoCorreo | null;
-  };
+  const [actual, setActual] = useState("");
+  const [nueva, setNueva] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const [mostrar, setMostrar] = useState(false);
+  const [mostrarAgregarCorreo, setMostrarAgregarCorreo] = useState(false);
+  const [nuevoCorreo, setNuevoCorreo] = useState("");
+  const [codigoVerificacion, setCodigoVerificacion] = useState("");
+  const [correoPendienteId, setCorreoPendienteId] = useState<string | null>(null);
+  const [emailPendiente, setEmailPendiente] = useState("");
+  const [procesandoCorreo, setProcesandoCorreo] = useState(false);
 
   useEffect(() => {
-    let activo = true;
-
-    const cargarPerfil = async () => {
+    if (!isLoaded) return;
+    let vigente = true;
+    async function cargar() {
+      setCargando(true);
+      setError("");
+      setPerfil(null);
+      setProveedor(null);
       try {
-        const {
-          data: { user },
-          error: errorAuth,
-        } = await supabase.auth.getUser();
-
-        if (errorAuth || !user) {
-          throw new Error("No existe una sesión autenticada.");
+        if (isSignedIn && clerkUserId) {
+          const { data, error: fallo } = await clienteClerk.from("usuarios")
+            .select("nombre,correo,dni,rol,estado,codigo_institucional,nivel_asignado,aula_asignada,debe_cambiar_contrasena")
+            .eq("clerk_user_id", clerkUserId).maybeSingle();
+          if (fallo || !data || data.estado !== "Activo" || data.debe_cambiar_contrasena) {
+            throw new Error("No se pudo validar tu perfil institucional con Clerk.");
+          }
+          if (vigente) {
+            setPerfil(data as Perfil);
+            setProveedor("clerk");
+            setCorreoAuth(usuarioClerk?.primaryEmailAddress?.emailAddress ?? "");
+            setCorreoVerificado(usuarioClerk?.primaryEmailAddress?.verification?.status === "verified");
+            // El registro de correo adicional actual usa UUID de Supabase Auth.
+            setEstadoCorreo(null);
+          }
+        } else {
+          const { data: auth, error: authError } = await supabase.auth.getUser();
+          if (authError || !auth.user) throw new Error("No existe una sesión autenticada.");
+          const { data, error: fallo } = await supabase.from("usuarios")
+            .select("nombre,correo,dni,rol,estado,codigo_institucional,nivel_asignado,aula_asignada")
+            .eq("authUserId", auth.user.id).maybeSingle();
+          if (fallo || !data || data.estado !== "Activo") {
+            throw new Error("No se pudo validar tu perfil institucional.");
+          }
+          const resultado = await supabase.rpc("obtener_mi_estado_correo");
+          const extra = Array.isArray(resultado.data) ? resultado.data[0] ?? null : resultado.data ?? null;
+          if (vigente) {
+            setPerfil(data as Perfil);
+            setProveedor("supabase");
+            setCorreoAuth(auth.user.email ?? "");
+            setCorreoVerificado(Boolean(auth.user.email_confirmed_at));
+            setEstadoCorreo(resultado.error ? null : extra as EstadoCorreo | null);
+          }
         }
-
-        const { data, error: errorPerfil } = await supabase
-          .from("usuarios")
-          .select("nombre, correo, rol, estado")
-          .eq("authUserId", user.id)
-          .single();
-
-        if (errorPerfil || !data) {
-          throw new Error(
-            "No se pudo consultar tu perfil institucional."
-          );
-        }
-
-        const correo = await consultarEstadoCorreo();
-
-        if (activo) {
-          setPerfil(data as Perfil);
-          setEstadoCorreo(correo);
-        }
-      } catch (err) {
-        if (activo) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "No se pudo cargar tu perfil."
-          );
-        }
+      } catch (e) {
+        if (vigente) setError(e instanceof Error ? e.message : "No se pudo cargar el perfil.");
       } finally {
-        if (activo) setCargando(false);
+        if (vigente) setCargando(false);
       }
-    };
-
-    void cargarPerfil();
-
-    return () => {
-      activo = false;
-    };
-  }, []);
-
-  const actualizarCorreo = async () => {
-    setError("");
-    setMensaje("");
-    setActualizandoCorreo(true);
-
-    try {
-      const registro = await consultarEstadoCorreo();
-      setEstadoCorreo(registro);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo actualizar la información."
-      );
-    } finally {
-      setActualizandoCorreo(false);
     }
+    void cargar();
+    return () => { vigente = false; };
+  }, [isLoaded, isSignedIn, clerkUserId, clienteClerk, usuarioClerk]);
+
+  const actualizarEstado = async () => {
+    setActualizando(true);
+    setError(""); setMensaje("");
+    try {
+      if (proveedor === "clerk") {
+        await usuarioClerk?.reload();
+        setCorreoAuth(usuarioClerk?.primaryEmailAddress?.emailAddress ?? "");
+        setCorreoVerificado(usuarioClerk?.primaryEmailAddress?.verification?.status === "verified");
+      } else {
+        const { data, error: fallo } = await supabase.auth.getUser();
+        if (fallo || !data.user) throw new Error("Sesión no disponible.");
+        setCorreoAuth(data.user.email ?? "");
+        setCorreoVerificado(Boolean(data.user.email_confirmed_at));
+        const extra = await supabase.rpc("obtener_mi_estado_correo");
+        setEstadoCorreo(extra.error ? null : (Array.isArray(extra.data) ? extra.data[0] ?? null : extra.data));
+      }
+      setMensaje("Información de correo actualizada.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo actualizar el correo.");
+    } finally { setActualizando(false); }
   };
 
-  const solicitarVerificacion = async (e: FormEvent) => {
+  const agregarCorreo = async (e: FormEvent) => {
     e.preventDefault();
-
-    if (enviandoCorreo) return;
-
-    setError("");
-    setMensaje("");
-
-    if (!perfil || perfil.estado !== "Activo") {
-      setError("Tu cuenta no está habilitada.");
-      return;
-    }
-
+    if (procesandoCorreo) return;
+    setError(""); setMensaje("");
     const correo = nuevoCorreo.trim().toLowerCase();
-    const formato = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (correo.length > 254 || !formato.test(correo)) {
-      setError("Ingresa un correo electrónico válido.");
-      return;
+    if (correo.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+      setError("Introduce una dirección de correo válida."); return;
     }
-
-    if (correo === perfil.correo.trim().toLowerCase()) {
-      setError(
-        "El correo secundario debe ser diferente al principal."
-      );
-      return;
-    }
-
-    if (
-      estadoCorreo?.verificado &&
-      correo ===
-        estadoCorreo.correo_secundario?.toLowerCase()
-    ) {
-      setError("Ese correo ya está verificado.");
-      return;
-    }
-
-    setEnviandoCorreo(true);
-
+    setProcesandoCorreo(true);
     try {
-      const { data, error: errorFuncion } =
-        await supabase.functions.invoke(
-          "solicitar-verificacion-correo",
-          {
-            body: { correo },
-          }
-        );
-
-      if (errorFuncion) {
-        let detalle = "No se pudo enviar la verificación.";
-
-        const respuesta = errorFuncion.context;
-
-        if (respuesta instanceof Response) {
-          const contenido = await respuesta
-            .clone()
-            .json()
-            .catch(() => null);
-
-          if (typeof contenido?.error === "string") {
-            detalle = contenido.error;
-          }
+      if (proveedor === "clerk") {
+        if (!usuarioClerk) throw new Error("No hay sesión de Clerk disponible.");
+        const existente = usuarioClerk.emailAddresses.find(ea => ea.emailAddress.toLowerCase() === correo);
+        const email = existente ?? await usuarioClerk.createEmailAddress({ email: correo });
+        if (email.verification?.status === "verified") {
+          setMensaje("Este correo ya está verificado en Clerk.");
+          setCorreoAuth(email.emailAddress);
+          setCorreoVerificado(true);
+          setMostrarAgregarCorreo(false);
+          return;
         }
+        await email.prepareVerification({ strategy: "email_code" });
+        setCorreoPendienteId(email.id);
+        setEmailPendiente(correo);
+        setCodigoVerificacion("");
+        setMensaje("Se envió un código de verificación a tu correo. Introduce el código recibido.");
+      } else if (proveedor === "supabase") {
+        // Esta función debe validar la sesión y verificar el correo del lado servidor.
+        // No cambia el correo de inicio de sesión ni marca verificaciones desde el cliente.
+        const { data, error: fallo } = await supabase.functions.invoke("solicitar-verificacion-correo", {
+          body: { correo },
+        });
+        if (fallo) {
+          let detalle = "No está disponible el envío de verificación. Comprueba que la función segura esté desplegada.";
+          if (fallo.context instanceof Response) {
+            const cuerpo = await fallo.context.clone().json().catch(() => null);
+            if (typeof cuerpo?.error === "string") detalle = cuerpo.error;
+          }
+          throw new Error(detalle);
+        }
+        if (!data?.ok) throw new Error(data?.error || "No se pudo solicitar la verificación.");
+        setEmailPendiente(correo);
+        setMensaje("Solicitud enviada. Revisa tu correo y sigue el enlace de verificación; aún no está vinculado.");
+        const extra = await supabase.rpc("obtener_mi_estado_correo");
+        if (!extra.error) setEstadoCorreo(Array.isArray(extra.data) ? extra.data[0] ?? null : extra.data);
+      } else throw new Error("No se ha identificado una sesión válida.");
+    } catch (e) {
+      const detalles = (e as { errors?: { longMessage?: string; message?: string }[] })?.errors;
+      setError(detalles?.[0]?.longMessage || detalles?.[0]?.message || (e instanceof Error ? e.message : "Error al registrar el correo."));
+    } finally { setProcesandoCorreo(false); }
+  };
 
-        throw new Error(detalle);
+  const verificarCorreoClerk = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!usuarioClerk || !correoPendienteId || procesandoCorreo) return;
+    setError(""); setMensaje(""); setProcesandoCorreo(true);
+    try {
+      const email = usuarioClerk.emailAddresses.find(item => item.id === correoPendienteId);
+      if (!email) throw new Error("No encontramos el correo pendiente; actualiza la página y vuelve a agregarlo.");
+      const resultado = await email.attemptVerification({ code: codigoVerificacion.trim() });
+      if (resultado.verification?.status !== "verified") {
+        throw new Error("El código no pudo verificarse. Compruébalo e inténtalo otra vez.");
       }
-
-      if (!data?.ok) {
-        throw new Error(
-          data?.error || "La solicitud no fue aceptada."
-        );
-      }
-
-      setMensaje(
-        data.mensaje ||
-          "Solicitud registrada. Revisa el correo indicado."
-      );
-
+      await usuarioClerk.reload();
+      setCorreoPendienteId(null);
+      setCodigoVerificacion("");
       setNuevoCorreo("");
-
-      // Mostrar la nueva dirección pendiente.
-      const registro = await consultarEstadoCorreo();
-      setEstadoCorreo(registro);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Ocurrió un error al solicitar la verificación."
-      );
-    } finally {
-      setEnviandoCorreo(false);
-    }
+      setMostrarAgregarCorreo(false);
+      setCorreoAuth(usuarioClerk.primaryEmailAddress?.emailAddress ?? "");
+      setCorreoVerificado(usuarioClerk.primaryEmailAddress?.verification?.status === "verified");
+      setMensaje("Correo verificado en Clerk. Ya está asociado a tu cuenta; revisaremos por separado la recuperación de contraseñas.");
+    } catch (e) {
+      const detalles = (e as { errors?: { longMessage?: string; message?: string }[] })?.errors;
+      setError(detalles?.[0]?.longMessage || detalles?.[0]?.message || (e instanceof Error ? e.message : "No se pudo verificar el código."));
+    } finally { setProcesandoCorreo(false); }
   };
 
   const cambiarContrasena = async (e: FormEvent) => {
     e.preventDefault();
     if (guardando) return;
-
-    setError("");
-    setMensaje("");
-
-    if (!perfil || perfil.estado !== "Activo") {
-      setError("No se pudo identificar una cuenta activa.");
+    setError(""); setMensaje("");
+    if (!perfil || perfil.estado !== "Activo") { setError("Cuenta no autorizada."); return; }
+    if (nueva.length < 15 || !evaluarContrasena(nueva).esValida) {
+      setError("La contraseña debe tener al menos 15 caracteres, mayúscula, minúscula, número, símbolo y ningún espacio.");
       return;
     }
-
-    if (!evaluarContrasena(nuevaContrasena).esValida) {
-      setError(
-        "La nueva contraseña debe tener al menos 12 caracteres, una mayúscula, una minúscula, un número, un símbolo y no contener espacios."
-      );
+    if (actual === nueva || nueva !== confirmar) {
+      setError("Revisa la contraseña actual y la confirmación de la nueva contraseña.");
       return;
     }
-
-    if (nuevaContrasena !== confirmarContrasena) {
-      setError("Las contraseñas nuevas no coinciden.");
-      return;
-    }
-
-    if (contrasenaActual === nuevaContrasena) {
-      setError(
-        "La nueva contraseña debe ser diferente a la actual."
-      );
-      return;
-    }
-
     setGuardando(true);
-
     try {
-      const { error: errorVerificacion } =
-        await supabase.auth.signInWithPassword({
-          email: perfil.correo,
-          password: contrasenaActual,
-        });
-
-      if (errorVerificacion) {
-        throw new Error("La contraseña actual es incorrecta.");
-      }
-
-      const { error: errorCambio } =
-        await supabase.auth.updateUser({
-          password: nuevaContrasena,
-        });
-
-      if (errorCambio) {
-        throw new Error(errorCambio.message);
-      }
-
-      setContrasenaActual("");
-      setNuevaContrasena("");
-      setConfirmarContrasena("");
-
-      setMensaje("Tu contraseña se actualizó correctamente.");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo actualizar la contraseña."
-      );
-    } finally {
-      setGuardando(false);
-    }
+      if (proveedor === "clerk") {
+        if (!usuarioClerk) throw new Error("Sesión Clerk no disponible.");
+        await usuarioClerk.updatePassword({ currentPassword: actual, newPassword: nueva, signOutOfOtherSessions: true });
+      } else if (proveedor === "supabase") {
+        const { data, error: authError } = await supabase.auth.getUser();
+        if (authError || !data.user?.email) throw new Error("Tu cuenta no tiene correo de autenticación disponible.");
+        const { error: verificarError } = await supabase.auth.signInWithPassword({ email: data.user.email, password: actual });
+        if (verificarError) throw new Error("La contraseña actual es incorrecta.");
+        const { error: guardarError } = await supabase.auth.updateUser({ password: nueva });
+        if (guardarError) throw guardarError;
+      } else throw new Error("No existe una sesión válida.");
+      setActual(""); setNueva(""); setConfirmar("");
+      setMensaje("Contraseña actualizada correctamente.");
+    } catch (e) {
+      const fallos = (e as { errors?: { longMessage?: string; message?: string }[] })?.errors;
+      setError(fallos?.[0]?.longMessage || fallos?.[0]?.message || (e instanceof Error ? e.message : "No se pudo cambiar la contraseña."));
+    } finally { setGuardando(false); }
   };
 
-  if (cargando) {
-    return (
-      <div className="flex-1 p-8 text-center text-slate-500">
-        Cargando información de tu perfil...
-      </div>
-    );
-  }
-
+  if (cargando) return <div className="flex-1 p-8 text-center text-slate-500">Cargando información de tu perfil...</div>;
+  const vinculado = Boolean(correoAuth);
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <div>
-          <h1 className="flex items-center gap-3 text-2xl font-bold text-slate-800">
-            <UserRound className="text-emerald-600" />
-            Mi perfil
-          </h1>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Administra la información y seguridad de tu cuenta.
-          </p>
-        </div>
-
-        {error && (
-          <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            <AlertCircle size={20} className="shrink-0" />
-            {error}
-          </div>
-        )}
-
-        {mensaje && (
-          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-            <CheckCircle2 size={20} className="shrink-0" />
-            {mensaje}
-          </div>
-        )}
-
-        {perfil && (
-          <>
-            {/* Información institucional */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-800">
-                <UserRound
-                  className="text-emerald-600"
-                  size={21}
-                />
-                Información institucional
-              </h2>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {[
-                  ["Nombre completo", perfil.nombre],
-                  ["Correo principal", perfil.correo],
-                  ["Rol institucional", perfil.rol],
-                  ["Estado de la cuenta", perfil.estado],
-                ].map(([etiqueta, valor]) => (
-                  <div key={etiqueta}>
-                    <label className="mb-2 block text-sm font-semibold text-slate-600">
-                      {etiqueta}
-                    </label>
-
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                      {valor}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* Correo secundario */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800">
-                  <Mail
-                    className="text-emerald-600"
-                    size={21}
-                  />
-                  Correo secundario
-                </h2>
-
-                <button
-                  type="button"
-                  onClick={() => void actualizarCorreo()}
-                  disabled={actualizandoCorreo}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  <RefreshCw size={15} />
-                  {actualizandoCorreo
-                    ? "Actualizando..."
-                    : "Actualizar estado"}
-                </button>
-              </div>
-
-              <p className="mb-5 text-sm text-slate-500">
-                Utiliza un correo personal al que tengas
-                acceso para recibir notificaciones de seguridad.
-              </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-600">
-                    Correo secundario actual
-                  </label>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    {estadoCorreo?.correo_secundario ||
-                      "No registrado"}
-                  </div>
-                </div>
-
-                {estadoCorreo?.correo_secundario &&
-                  (estadoCorreo.verificado ? (
-                    <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700">
-                      <CheckCircle2 size={17} />
-                      Correo verificado
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700">
-                      <AlertCircle size={17} />
-                      Correo no verificado
-                    </span>
-                  ))}
-
-                {estadoCorreo?.verificado &&
-                  estadoCorreo.fecha_verificacion && (
-                    <p className="text-xs text-slate-500">
-                      Verificado el{" "}
-                      {new Date(
-                        estadoCorreo.fecha_verificacion
-                      ).toLocaleString("es-PE")}
-                    </p>
-                  )}
-
-                {estadoCorreo?.correo_pendiente && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
-                      <Clock3 size={18} />
-                      Correo pendiente de verificación
-                    </div>
-
-                    <p className="mt-2 break-all text-sm text-amber-900">
-                      {estadoCorreo.correo_pendiente}
-                    </p>
-
-                    <p className="mt-2 text-xs text-amber-700">
-                      Abre el enlace enviado a esta dirección
-                      para completar la verificación.
-                      Tu correo anterior se conserva.
-                    </p>
-                  </div>
-                )}
-
-                <form
-                  onSubmit={solicitarVerificacion}
-                  className="space-y-4 border-t border-slate-100 pt-5"
-                >
-                  <div>
-                    <label
-                      htmlFor="nuevo-correo-secundario"
-                      className="mb-2 block text-sm font-semibold text-slate-600"
-                    >
-                      Agregar o cambiar correo secundario
-                    </label>
-
-                    <input
-                      id="nuevo-correo-secundario"
-                      type="email"
-                      value={nuevoCorreo}
-                      onChange={(e) =>
-                        setNuevoCorreo(e.target.value)
-                      }
-                      placeholder="correo.personal@gmail.com"
-                      autoComplete="email"
-                      required
-                      disabled={enviandoCorreo}
-                      className="w-full max-w-lg rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 disabled:opacity-60"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={enviandoCorreo}
-                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    <Send size={17} />
-                    {enviandoCorreo
-                      ? "Solicitando..."
-                      : "Enviar enlace de verificación"}
-                  </button>
-                </form>
-              </div>
-            </section>
-
-            {/* Cambiar contraseña */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-800">
-                <LockKeyhole
-                  className="text-emerald-600"
-                  size={21}
-                />
-                Cambiar contraseña
-              </h2>
-
-              <p className="mb-5 text-sm text-slate-500">
-                Utiliza una contraseña segura de al menos
-                12 caracteres.
-              </p>
-
-              <form
-                onSubmit={cambiarContrasena}
-                className="max-w-lg space-y-4"
-              >
-                {[
-                  {
-                    etiqueta: "Contraseña actual",
-                    valor: contrasenaActual,
-                    cambio: setContrasenaActual,
-                  },
-                  {
-                    etiqueta: "Nueva contraseña",
-                    valor: nuevaContrasena,
-                    cambio: setNuevaContrasena,
-                  },
-                  {
-                    etiqueta: "Confirmar nueva contraseña",
-                    valor: confirmarContrasena,
-                    cambio: setConfirmarContrasena,
-                  },
-                ].map((campo, indice) => (
-                  <div key={campo.etiqueta}>
-                    <label className="mb-2 block text-sm font-semibold text-slate-600">
-                      {campo.etiqueta}
-                    </label>
-
-                    <input
-                      type={
-                        mostrarContrasenas ? "text" : "password"
-                      }
-                      value={campo.valor}
-                      onChange={(e) =>
-                        campo.cambio(e.target.value)
-                      }
-                      required
-                      autoComplete={
-                        indice === 0
-                          ? "current-password"
-                          : "new-password"
-                      }
-                      disabled={guardando}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 disabled:opacity-60"
-                    />
-                  </div>
-                ))}
-
-                <IndicadorSeguridadContrasena contrasena={nuevaContrasena} />
-                {confirmarContrasena && (
-                  <p className={`text-xs font-medium ${nuevaContrasena === confirmarContrasena ? "text-emerald-700" : "text-red-600"}`}>
-                    {nuevaContrasena === confirmarContrasena ? "Las contraseñas coinciden." : "Las contraseñas no coinciden."}
-                  </p>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMostrarContrasenas(!mostrarContrasenas)
-                  }
-                  className="flex items-center gap-2 text-sm text-slate-600"
-                >
-                  {mostrarContrasenas ? (
-                    <EyeOff size={17} />
-                  ) : (
-                    <Eye size={17} />
-                  )}
-
-                  {mostrarContrasenas
-                    ? "Ocultar contraseñas"
-                    : "Mostrar contraseñas"}
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={guardando || !contrasenaActual || !evaluarContrasena(nuevaContrasena).esValida || nuevaContrasena !== confirmarContrasena || nuevaContrasena === contrasenaActual}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  <Save size={18} />
-                  {guardando
-                    ? "Actualizando..."
-                    : "Actualizar contraseña"}
-                </button>
-              </form>
-            </section>
-
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <ShieldCheck
-                size={17}
-                className="text-emerald-600"
-              />
-              Tu rol institucional no puede modificarse
-              desde esta sección.
+        <header>
+          <h1 className="flex items-center gap-3 text-2xl font-bold text-slate-800"><UserRound className="text-emerald-600"/> Mi perfil</h1>
+          <p className="mt-1 text-sm text-slate-500">Consulta tus datos institucionales, correo vinculado y opciones de seguridad.</p>
+        </header>
+        {error && <div role="alert" className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><AlertCircle size={20}/>{error}</div>}
+        {mensaje && <div role="status" className="flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700"><CheckCircle2 size={20}/>{mensaje}</div>}
+        {perfil && <>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-800"><UserRound size={21} className="text-emerald-600"/> Información institucional</h2>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {([
+                ["Nombre completo", perfil.nombre || "No registrado"],
+                ["DNI", perfil.dni || "No registrado"],
+                ["Código institucional", perfil.codigo_institucional || "No asignado"],
+                ["Rol institucional", perfil.rol || "No asignado"],
+                ["Estado de la cuenta", perfil.estado || "Sin estado"],
+                ["Nivel asignado", perfil.nivel_asignado || "No aplica"],
+                ["Aula asignada", perfil.aula_asignada || "No aplica"],
+                ["Correo asociado", correoAuth || "No vinculado"],
+              ] as [string, string][]).map(([etiqueta, valor]) => (
+                <div key={etiqueta}><label className="mb-2 block text-sm font-semibold text-slate-600">{etiqueta}</label><div className={caja}>{valor}</div></div>
+              ))}
             </div>
-          </>
-        )}
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800"><Mail size={21} className="text-emerald-600"/> Correo de recuperación</h2>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => { setMostrarAgregarCorreo(v => !v); setError(""); setMensaje(""); }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"><Plus size={15}/>{correoAuth ? "Agregar otro correo" : "Agregar correo electrónico"}</button>
+                <button type="button" onClick={() => void actualizarEstado()} disabled={actualizando} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"><RefreshCw size={14} className="mr-1 inline"/>{actualizando ? "Actualizando..." : "Actualizar estado"}</button>
+              </div>
+            </div>
+            {vinculado ? <>
+              <div className={caja}>{correoAuth}</div>
+              <p className={`mt-3 flex items-center gap-2 text-sm ${correoVerificado ? "text-emerald-700" : "text-amber-700"}`}>{correoVerificado ? <CheckCircle2 size={17}/> : <Clock3 size={17}/>} {correoVerificado ? "Correo confirmado por el proveedor de identidad" : "Correo aún no confirmado"}</p>
+            </> : <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">No tienes un correo de recuperación vinculado.</p>}
+            {proveedor === "clerk" && usuarioClerk?.emailAddresses.some(ea => ea.verification?.status === "verified") &&
+              <p className="mt-3 text-sm text-emerald-700">Correos verificados en Clerk: {usuarioClerk.emailAddresses.filter(ea => ea.verification?.status === "verified").map(ea => ea.emailAddress).join(", ")}</p>}
+            {proveedor === "supabase" && estadoCorreo?.correo_secundario && <p className="mt-3 text-sm text-slate-700">Correo adicional: {estadoCorreo.correo_secundario} ({estadoCorreo.verificado ? "verificado" : "no verificado"})</p>}
+            {mostrarAgregarCorreo && <form onSubmit={agregarCorreo} className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+              <label htmlFor="correo-adicional" className="block text-sm font-semibold text-slate-700">Correo electrónico que deseas verificar</label>
+              <input id="correo-adicional" type="email" required value={nuevoCorreo} onChange={e => setNuevoCorreo(e.target.value)} disabled={procesandoCorreo || Boolean(correoPendienteId)} autoComplete="email" placeholder="nombre@ejemplo.com" className={entrada}/>
+              <button type="submit" disabled={procesandoCorreo || Boolean(correoPendienteId)} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"><Send size={17}/>{procesandoCorreo ? "Enviando..." : "Enviar verificación"}</button>
+            </form>}
+            {proveedor === "clerk" && correoPendienteId && <form onSubmit={verificarCorreoClerk} className="mt-4 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-800">Verificar correo electrónico: {emailPendiente}</p>
+              <label htmlFor="codigo-correo" className="block text-sm text-slate-700">Código que recibiste por correo</label>
+              <input id="codigo-correo" value={codigoVerificacion} onChange={e => setCodigoVerificacion(e.target.value)} inputMode="numeric" required autoComplete="one-time-code" disabled={procesandoCorreo} className={entrada}/>
+              <div className="flex flex-wrap gap-2">
+                <button type="submit" disabled={procesandoCorreo || !codigoVerificacion.trim()} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Verificar código</button>
+                <button type="button" disabled={procesandoCorreo} onClick={() => { setCorreoPendienteId(null); setCodigoVerificacion(""); setMostrarAgregarCorreo(true); }} className="rounded-xl border border-slate-200 px-4 py-2 text-sm">Usar otro correo</button>
+              </div>
+            </form>}
+            {proveedor === "supabase" && estadoCorreo?.correo_pendiente && <p className="mt-3 text-sm text-amber-700">Pendiente de verificar: {estadoCorreo.correo_pendiente}. Comprueba el enlace que recibas.</p>}
+            <p className="mt-4 text-xs text-amber-700">La verificación confirma la propiedad del correo. Su uso para recuperación de contraseñas requiere que el proveedor de identidad tenga configurado ese mecanismo; no se activa automáticamente en SIGUE.</p>
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-800"><LockKeyhole size={21} className="text-emerald-600"/> Cambiar contraseña</h2>
+            <p className="mb-5 text-sm text-slate-500">Usa una contraseña de al menos 15 caracteres.</p>
+            <form onSubmit={cambiarContrasena} className="max-w-lg space-y-4">
+              {([
+                { label: "Contraseña actual", valor: actual, fn: setActual },
+                { label: "Nueva contraseña", valor: nueva, fn: setNueva },
+                { label: "Confirmar nueva contraseña", valor: confirmar, fn: setConfirmar },
+              ]).map((campo, i) => <div key={campo.label}>
+                <label className="mb-2 block text-sm font-semibold text-slate-600">{campo.label}</label>
+                <input type={mostrar ? "text" : "password"} value={campo.valor} onChange={e => campo.fn(e.target.value)} required autoComplete={i === 0 ? "current-password" : "new-password"} disabled={guardando} className={entrada}/>
+              </div>)}
+              <IndicadorSeguridadContrasena contrasena={nueva}/>
+              {confirmar && <p className={`text-xs ${nueva === confirmar ? "text-emerald-700" : "text-red-600"}`}>{nueva === confirmar ? "Las contraseñas coinciden." : "Las contraseñas no coinciden."}</p>}
+              <button type="button" onClick={() => setMostrar(v => !v)} className="flex items-center gap-2 text-sm text-slate-600">{mostrar ? <EyeOff size={17}/> : <Eye size={17}/>} {mostrar ? "Ocultar contraseñas" : "Mostrar contraseñas"}</button>
+              <button type="submit" disabled={guardando || !actual || nueva.length < 15 || !evaluarContrasena(nueva).esValida || nueva !== confirmar || nueva === actual} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"><Save size={18}/>{guardando ? "Actualizando..." : "Actualizar contraseña"}</button>
+            </form>
+          </section>
+          <p className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={17} className="text-emerald-600"/> Tu rol institucional no puede modificarse desde esta sección.</p>
+        </>}
       </div>
     </div>
   );

@@ -1,0 +1,273 @@
+
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { withSupabase } from "jsr:@supabase/server@1";
+
+const CORREO_PRUEBA = "yucacho2004@gmail.com";
+const ADMIN_PRUEBA = "admin.pruebas@example.com";
+
+function convertirHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function generarToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+
+  const token = convertirHex(bytes);
+
+  const hashBytes = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(token)
+    )
+  );
+
+  return {
+    token,
+    hash: convertirHex(hashBytes),
+  };
+}
+
+export default {
+  fetch: withSupabase(
+    { auth: "user" },
+    async (req, ctx) => {
+      if (req.method !== "POST") {
+        return Response.json(
+          { error: "Método no permitido" },
+          { status: 405 }
+        );
+      }
+
+      const usuarioId = ctx.userClaims?.id;
+      const correoPrincipal =
+        ctx.userClaims?.email?.toLowerCase();
+
+      if (!usuarioId || !correoPrincipal) {
+        return Response.json(
+          { error: "Sesión no válida" },
+          { status: 401 }
+        );
+      }
+
+      // Restricción temporal: solo Administrador
+      // de Pruebas.
+      if (correoPrincipal !== ADMIN_PRUEBA) {
+        return Response.json(
+          { error: "Prueba no autorizada" },
+          { status: 403 }
+        );
+      }
+
+      const { data: perfil, error: errorPerfil } =
+        await ctx.supabase
+          .from("usuarios")
+          .select("rol, estado")
+          .eq("authUserId", usuarioId)
+          .single();
+
+      if (
+        errorPerfil ||
+        perfil?.rol !== "Administrador" ||
+        perfil?.estado !== "Activo"
+      ) {
+        return Response.json(
+          { error: "Usuario no autorizado" },
+          { status: 403 }
+        );
+      }
+
+      const admin = ctx.supabaseAdmin;
+
+      if (!admin) {
+        return Response.json(
+          { error: "Cliente seguro no disponible" },
+          { status: 500 }
+        );
+      }
+
+      const ahora = new Date();
+
+      const { data: existente, error: errorConsulta } =
+        await admin
+          .from("correos_recuperacion")
+          .select(
+            "verificado, correo_secundario, fecha_solicitud"
+          )
+          .eq("usuario_auth_id", usuarioId)
+          .maybeSingle();
+
+      
+      if (errorConsulta) {
+        console.error("Error consultando correos_recuperacion:", {
+          code: errorConsulta.code,
+          message: errorConsulta.message,
+          details: errorConsulta.details,
+          hint: errorConsulta.hint,
+       });
+
+       return Response.json(
+        {
+          error: "No se pudo consultar el registro",
+        },
+        { status: 500 }
+        );
+      }
+
+
+      if (
+        existente?.verificado &&
+        existente.correo_secundario === CORREO_PRUEBA
+      ) {
+        return Response.json({
+          ok: true,
+          mensaje: "El correo ya está verificado.",
+        });
+      }
+
+      // Límite preliminar: 5 minutos entre solicitudes.
+      // Antes de habilitar usuarios reales se debe
+      // implementar control atómico y por IP/cuenta.
+      if (existente?.fecha_solicitud) {
+        const minutos =
+          (ahora.getTime() -
+            new Date(existente.fecha_solicitud).getTime()) /
+          60000;
+
+        if (minutos < 5) {
+          return Response.json(
+            {
+              error:
+                "Espera 5 minutos antes de solicitar otro correo.",
+            },
+            { status: 429 }
+          );
+        }
+      }
+
+      const { token, hash } = await generarToken();
+
+      const vencimiento = new Date(
+        ahora.getTime() + 15 * 60 * 1000
+      );
+
+      const { error: errorGuardar } =
+        await admin
+          .from("correos_recuperacion")
+          .upsert(
+            {
+              usuario_auth_id: usuarioId,
+              correo_secundario: CORREO_PRUEBA,
+              verificado: false,
+              fecha_verificacion: null,
+              token_verificacion_hash: hash,
+              token_expira_en: vencimiento.toISOString(),
+              fecha_solicitud: ahora.toISOString(),
+              intentos_verificacion: 0,
+            },
+            {
+              onConflict: "usuario_auth_id",
+            }
+          );
+
+      if (errorGuardar) {
+        console.error(
+          "Error al guardar solicitud:",
+          errorGuardar.message
+        );
+
+        return Response.json(
+          { error: "No se pudo preparar la verificación" },
+          { status: 500 }
+        );
+      }
+
+      const apiKey = Deno.env.get("RESEND_API_KEY");
+
+      if (!apiKey) {
+        return Response.json(
+          { error: "Resend no está configurado" },
+          { status: 500 }
+        );
+      }
+
+      // La aplicación procesará este enlace
+      // cuando implementemos la confirmación.
+      const enlace =
+        "http://localhost:3003/#/verificar-correo?token=" +
+        encodeURIComponent(token);
+
+      const respuesta = await fetch(
+        "https://api.resend.com/emails",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from:
+              "SIGUE Seguridad <onboarding@resend.dev>",
+            to: [CORREO_PRUEBA],
+            subject:
+              "Verifica tu correo secundario - SIGUE",
+            html: `
+              <div style="font-family:Arial,sans-serif;padding:24px">
+                <h2 style="color:#047857">
+                  SIGUE - Genios del Millennium
+                </h2>
+                <p>Hola,</p>
+                <p>
+                  Se solicitó verificar un correo
+                  secundario para tu cuenta de SIGUE.
+                </p>
+                <p>
+                  Para continuar, abre el siguiente enlace:
+                </p>
+                <p>
+                  <a href="${enlace}"
+                     style="background:#059669;color:white;
+                     padding:12px 18px;text-decoration:none;
+                     border-radius:8px;display:inline-block">
+                    Verificar correo secundario
+                  </a>
+                </p>
+                <p>
+                  Este enlace vence en 15 minutos.
+                </p>
+                <p>
+                  Si no solicitaste esta operación,
+                  ignora este mensaje.
+                </p>
+                <small>
+                  No compartas este enlace con nadie.
+                </small>
+              </div>
+            `,
+          }),
+        }
+      );
+
+      if (!respuesta.ok) {
+        console.error(
+          "Resend rechazó el envío:",
+          respuesta.status
+        );
+
+        return Response.json(
+          { error: "No se pudo enviar la verificación" },
+          { status: 502 }
+        );
+      }
+
+      return Response.json({
+        ok: true,
+        mensaje:
+          "Se solicitó el envío del correo de verificación.",
+        expira_en_minutos: 15,
+      });
+    }
+  ),
+};
