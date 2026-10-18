@@ -19,11 +19,14 @@ interface RegistroBD {
   tabla_afectada: string;
   registro_id: string | null;
   usuario_auth_id: string | null;
+  usuario_institucional_id: string | null;
+  detalle: Record<string, unknown> | null;
   fecha_hora: string;
   campos_modificados: string[] | null;
 }
 
 interface PerfilBD {
+  id: string;
   nombre: string;
   correo: string;
   rol?: string;
@@ -54,7 +57,8 @@ const modulos: Record<string, string> = {
 
 function transformarRegistro(
   registro: RegistroBD,
-  nombres: Map<string, string>
+  nombresAuth: Map<string, string>,
+  nombresInstitucionales: Map<string, string>
 ): RegistroAuditoria {
   const accion: Accion =
     registro.accion === "INSERT"
@@ -67,10 +71,15 @@ function transformarRegistro(
     modulos[registro.tabla_afectada] ??
     registro.tabla_afectada;
 
-  const usuario = registro.usuario_auth_id
-    ? nombres.get(registro.usuario_auth_id) ??
-      `Usuario ${registro.usuario_auth_id.slice(0, 8)}`
-    : "Usuario no identificado";
+  // Operaciones de mantenimiento ejecutadas en SQL Editor carecen de sesión de SIGUE.
+  const mantenimiento = registro.detalle?.origen === "Mantenimiento administrativo SQL Editor";
+  const usuario = registro.usuario_institucional_id
+    ? (nombresInstitucionales.get(registro.usuario_institucional_id) ?? `Usuario institucional ${registro.usuario_institucional_id}`)
+    : registro.usuario_auth_id
+    ? (nombresAuth.get(registro.usuario_auth_id) ?? "Cuenta de autenticación no vinculada")
+    : mantenimiento
+    ? "Mantenimiento administrativo (SQL Editor)"
+    : "Autor no identificado";
 
   const campos = Array.isArray(registro.campos_modificados)
     ? registro.campos_modificados.join(", ")
@@ -157,7 +166,7 @@ export default function ViewAuditoria() {
         await supabase
           .from("auditoria")
           .select(
-            "id, accion, tabla_afectada, registro_id, usuario_auth_id, fecha_hora, campos_modificados"
+            "id, accion, tabla_afectada, registro_id, usuario_auth_id, usuario_institucional_id, fecha_hora, campos_modificados, detalle"
           )
           .order("fecha_hora", { ascending: false })
           .limit(100);
@@ -172,7 +181,7 @@ export default function ViewAuditoria() {
       const { data: perfiles, error: errorUsuarios } =
         await supabase
           .from("usuarios")
-          .select('nombre, correo, authUserId');
+          .select('id, nombre, correo, authUserId');
 
       if (errorUsuarios) {
         throw new Error(
@@ -180,16 +189,18 @@ export default function ViewAuditoria() {
         );
       }
 
-      const nombres = new Map<string, string>();
+      const nombresAuth = new Map<string, string>();
+      const nombresInstitucionales = new Map<string, string>();
 
       ((perfiles ?? []) as PerfilBD[]).forEach((p) => {
+        nombresInstitucionales.set(p.id, p.nombre || p.correo || p.id);
         if (p.authUserId) {
-          nombres.set(p.authUserId, p.nombre || p.correo);
+          nombresAuth.set(p.authUserId, p.nombre || p.correo);
         }
       });
 
       const resultado = ((actividades ?? []) as RegistroBD[])
-        .map((registro) => transformarRegistro(registro, nombres));
+        .map((registro) => transformarRegistro(registro, nombresAuth, nombresInstitucionales));
 
       setRegistros(resultado);
     } catch (err) {
