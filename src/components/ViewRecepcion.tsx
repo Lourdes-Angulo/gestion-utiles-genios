@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { useRolInstitucional } from "../lib/useRolInstitucional";
 
-import { Recepcion } from "../types";
+import type { Recepcion } from "../types";
 
 import {
 
@@ -31,7 +31,15 @@ import {
 
 
 
-export default function ViewRecepcion() {
+type ViewRecepcionProps = {
+  estudianteSeleccionadoId?: string | null;
+  onLimpiarSeleccion?: () => void;
+};
+
+export default function ViewRecepcion({
+  estudianteSeleccionadoId = null,
+  onLimpiarSeleccion,
+}: ViewRecepcionProps) {
 
   const {
 
@@ -185,7 +193,7 @@ export default function ViewRecepcion() {
 
     const vacio = items.every(it => it.cantidadEntregada === 0);
 
-    const estado = completo ? "Completo" : (vacio ? "Pendiente" : "Incompleto");
+    const estado: Recepcion["estado"] = completo ? "Completo" : vacio ? "Pendiente" : "Incompleto";
 
 
 
@@ -314,6 +322,27 @@ export default function ViewRecepcion() {
 
 
 
+  // Seleccionar la hoja del estudiante que llegó desde la Ficha Oficial.
+  const estudianteEnfocado = estudianteSeleccionadoId
+    ? estudiantes.find((est) => est.id === estudianteSeleccionadoId) ?? null
+    : null;
+
+  const recepcionesDelEnfocado = estudianteSeleccionadoId
+    ? recepciones.filter((rc) => rc.estudianteId === estudianteSeleccionadoId)
+    : [];
+
+  useEffect(() => {
+    if (!estudianteSeleccionadoId) return;
+    const ultima = [...recepciones]
+      .filter((rc) => rc.estudianteId === estudianteSeleccionadoId)
+      .sort((a, b) => b.fechaRecepcion.localeCompare(a.fechaRecepcion))[0] ?? null;
+    setFiltroBusqueda("");
+    setFiltroEstado("");
+    setRecepcionSeleccionada((prev) =>
+      prev?.id === ultima?.id ? prev : ultima
+    );
+  }, [estudianteSeleccionadoId, recepciones]);
+
   const handleCantidadChange = (utilId: string, val: number, max: number) => {
 
     setCantidadesEntregadas(prev => ({
@@ -329,6 +358,7 @@ export default function ViewRecepcion() {
 
 
   const recepcionesFiltradas = recepciones.filter(rc => {
+    if (estudianteSeleccionadoId && rc.estudianteId !== estudianteSeleccionadoId) return false;
 
     const term = filtroBusqueda.toLowerCase();
 
@@ -357,6 +387,33 @@ export default function ViewRecepcion() {
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
 
 
+
+      {estudianteSeleccionadoId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <div>
+            <p className="text-sm font-bold text-emerald-900">
+              Recepción de {estudianteEnfocado
+                ? `${estudianteEnfocado.nombres} ${estudianteEnfocado.apellidos}`
+                : "estudiante seleccionado"}
+            </p>
+            <p className="mt-1 text-xs text-emerald-700">
+              {recepcionesDelEnfocado.length > 0
+                ? "Se muestra únicamente el historial y la hoja de recepción de este estudiante."
+                : "Este estudiante todavía no tiene una recepción registrada."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onLimpiarSeleccion?.();
+              setRecepcionSeleccionada(null);
+            }}
+            className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+          >
+            Ver todas las recepciones
+          </button>
+        </div>
+      )}
 
       {/* Control Panel */}
 
@@ -800,7 +857,27 @@ export default function ViewRecepcion() {
 
             <div className="bg-white p-12 rounded-3xl border border-slate-150 text-center text-slate-400 font-bold">
 
-              Seleccione un estudiante del historial para ver el control detallado de su entrega.
+              {estudianteSeleccionadoId && estudianteEnfocado ? (
+                <div className="space-y-4">
+                  <p>No hay recepción registrada para {estudianteEnfocado.nombres} {estudianteEnfocado.apellidos}.</p>
+                  {puedeRegistrar && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSelectEstudianteNuevaRecepcion(estudianteEnfocado.id);
+                        setNuevoRecepObservaciones("");
+                        setNuevoRecepEntregadoPor("");
+                        setMostrarModalNuevaRecepcion(true);
+                      }}
+                      className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white hover:bg-emerald-700"
+                    >
+                      Crear recepción para este estudiante
+                    </button>
+                  )}
+                </div>
+              ) : (
+                "Seleccione un estudiante del historial para ver el control detallado de su entrega."
+              )}
 
             </div>
 
@@ -1439,7 +1516,7 @@ export default function ViewRecepcion() {
 
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
 
-                            Lista: <span className="text-emerald-800">{lista.nombre}</span>
+                            Lista: <span className="text-emerald-800">{lista.nivel} - {lista.grado} ({lista.anioEscolar})</span>
 
                           </span>
 

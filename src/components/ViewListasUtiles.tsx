@@ -195,6 +195,7 @@ export default function ViewListasUtiles() {
   }, [listas, rol, nivelAsignado, aulaAsignada]);
 
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
+  const [editandoListaId, setEditandoListaId] = useState<string | null>(null);
 
   const [formNivel, setFormNivel] = useState<"Inicial" | "Primaria">("Primaria");
 
@@ -240,6 +241,7 @@ export default function ViewListasUtiles() {
     if (!puedeGestionar) return;
     if (rol === "Profesora" &&
        (lista.nivel !== nivelAsignado || lista.grado !== aulaAsignada)) return;
+    setEditandoListaId(lista.id);
     setFormNivel(lista.nivel as "Inicial" | "Primaria");
     setFormGrado(lista.grado);
     setFormAnio(lista.anioEscolar);
@@ -316,8 +318,16 @@ export default function ViewListasUtiles() {
       return;
     }
     const existente = listas.find(l => l.grado === formGrado && l.nivel === formNivel && l.anioEscolar === formAnio);
+    if (!editandoListaId && existente) {
+      alert("Ya existe una lista para ese nivel, grado y año. Selecciónala y usa 'Editar esta lista'.");
+      return;
+    }
+    if (editandoListaId && existente && existente.id !== editandoListaId) {
+      alert("Ya existe otra lista para ese nivel, grado y año.");
+      return;
+    }
     const nuevaLista: ListaUtil = {
-      id: existente?.id ?? crypto.randomUUID(),
+      id: editandoListaId ?? crypto.randomUUID(),
       anioEscolar: formAnio,
       nivel: formNivel,
       grado: formGrado,
@@ -393,8 +403,8 @@ export default function ViewListasUtiles() {
 
 
 
-        {!(rol === "Profesora" || rol === "Auxiliar") && (
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {!(rol === "Profesora" || rol === "Auxiliar") && (
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
               <span className="text-xs font-bold text-slate-400">Nivel:</span>
               <select
@@ -407,8 +417,17 @@ export default function ViewListasUtiles() {
                 <option value="Primaria">Primaria</option>
               </select>
             </div>
-          </div>
-        )}
+          )}
+          {puedeGestionar && (
+            <button
+              type="button"
+              onClick={handleAbrirCrear}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-700"
+            >
+              <Plus size={17} /> Agregar lista
+            </button>
+          )}
+        </div>
 
       </div>
 

@@ -1,12 +1,10 @@
-
 import React, { useState } from "react";
 import { useSignIn } from "@clerk/react";
 import { supabase } from "../lib/supabaseClient";
-import InsigniaColegio from "./InsigniaColegio";
+import logoColegio from "../logo-colegio.png";
 
 import {
   LogIn,
-  Mail,
   Lock,
   AlertCircle,
   Eye,
@@ -21,8 +19,6 @@ interface LoginProps {
   onLoginSuccess: () => void;
 }
 
-type Modo = "codigo" | "correo";
-
 export default function Login({
   onLoginSuccess,
 }: LoginProps) {
@@ -30,7 +26,6 @@ export default function Login({
   // Autenticación institucional de Profesora y Auxiliar.
   const { signIn } = useSignIn();
 
-  const [modo, setModo] = useState<Modo>("codigo");
   const [codigo, setCodigo] = useState("");
   const [correo, setCorreo] = useState("");
   const [contrasenia, setContrasenia] = useState("");
@@ -41,14 +36,6 @@ export default function Login({
   const [cargando, setCargando] = useState(false);
   const [mostrarRecuperacion, setMostrarRecuperacion] =
     useState(false);
-
-  const cambiarModo = (nuevoModo: Modo) => {
-    setModo(nuevoModo);
-    setErrorMsg("");
-    setInfoMsg("");
-    setContrasenia("");
-    setMostrarRecuperacion(false);
-  };
 
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
@@ -66,10 +53,7 @@ export default function Login({
     }
 
     const codigoNormalizado = codigo.trim().toUpperCase();
-    const emailLower = correo.trim().toLowerCase();
-
     if (
-      modo === "codigo" &&
       !/^(ADM|SEC|DOC|AUX|ING)-\d{4,}$/.test(
         codigoNormalizado
       )
@@ -80,14 +64,6 @@ export default function Login({
       return;
     }
 
-    if (
-      modo === "correo" &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)
-    ) {
-      setErrorMsg("Ingresa un correo electrónico válido.");
-      return;
-    }
-
     setCargando(true);
 
     try {
@@ -95,7 +71,6 @@ export default function Login({
       // PROFESORA Y AUXILIAR: AUTENTICACIÓN CON CLERK
       // ===================================================
       if (
-        modo === "codigo" &&
         /^(DOC|AUX|ING)-\d{4,}$/.test(codigoNormalizado)
       ) {
         const { error: errorClerk } =
@@ -146,8 +121,7 @@ export default function Login({
       // ===================================================
       // ADMINISTRADOR Y SECRETARÍA: SUPABASE AUTH
       // ===================================================
-      if (modo === "codigo") {
-        const { data, error: errorFuncion } =
+      const { data, error: errorFuncion } =
           await supabase.functions.invoke(
             "iniciar-sesion-codigo",
             {
@@ -190,30 +164,7 @@ export default function Login({
         setContrasenia("");
         onLoginSuccess();
         return;
-      }
 
-      // ===================================================
-      // ACCESO TEMPORAL POR CORREO: CUENTAS EXISTENTES
-      // ===================================================
-      const { data, error } =
-        await supabase.auth.signInWithPassword({
-          email: emailLower,
-          password: contrasenia,
-        });
-
-      if (error || !data.session) {
-        setErrorMsg(
-          "No se pudo iniciar sesión. Verifica tus credenciales."
-        );
-        return;
-      }
-
-      localStorage.removeItem(
-        "sesion_colegio_usuario_id"
-      );
-
-      setContrasenia("");
-      onLoginSuccess();
     } catch (err) {
       console.error("Error de autenticación:", err);
 
@@ -274,9 +225,10 @@ export default function Login({
         <div className="h-2 bg-emerald-600 w-full" />
 
         <div className="p-8 flex flex-col items-center">
-          <InsigniaColegio
-            size={130}
-            className="mb-4"
+          <img
+            src={logoColegio}
+            alt="Logo de la I.E.P. Genios del Millennium"
+            className="w-[130px] h-[150px] object-contain mb-4 mx-auto"
           />
 
           <div className="text-center mb-6">
@@ -373,52 +325,24 @@ export default function Login({
                     htmlFor="identificador"
                     className="block text-slate-500 mb-1.5 uppercase tracking-wide"
                   >
-                    {modo === "codigo"
-                      ? "Código institucional"
-                      : "Correo electrónico (acceso temporal)"}
+                    Código institucional
                   </label>
 
                   <div className="relative">
-                    {modo === "codigo" ? (
-                      <IdCard className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-400" />
-                    ) : (
-                      <Mail className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-400" />
-                    )}
+                    <IdCard className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-400" />
 
                     <input
                       id="identificador"
-                      type={
-                        modo === "codigo"
-                          ? "text"
-                          : "email"
-                      }
-                      value={
-                        modo === "codigo"
-                          ? codigo
-                          : correo
-                      }
+                      type="text"
+                      value={codigo}
                       onChange={(e) =>
-                        modo === "codigo"
-                          ? setCodigo(
-                              e.target.value
-                                .toUpperCase()
-                                .replace(/\s/g, "")
-                            )
-                          : setCorreo(e.target.value)
+                        setCodigo(e.target.value.toUpperCase().replace(/\s/g, ""))
                       }
-                      placeholder={
-                        modo === "codigo"
-                          ? "DOC-0009"
-                          : "correo@ejemplo.com"
-                      }
+                      placeholder="DOC-0009"
                       autoComplete="username"
                       required
                       disabled={cargando}
-                      maxLength={
-                        modo === "codigo"
-                          ? 16
-                          : undefined
-                      }
+                      maxLength={16}
                       className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-700 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
@@ -477,7 +401,7 @@ export default function Login({
                 <button
                   type="submit"
                   disabled={cargando}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-3 px-4 rounded-xl flex items-center justify-center gap-2 uppercase tracking-wider"
+                  className="w-full !mt-20 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-3 px-4 rounded-xl flex items-center justify-center gap-2 uppercase tracking-wider"
                 >
                   <LogIn className="w-4 h-4" />
                   {cargando
@@ -497,21 +421,6 @@ export default function Login({
                   ¿Olvidaste tu contraseña?
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    cambiarModo(
-                      modo === "codigo"
-                        ? "correo"
-                        : "codigo"
-                    )
-                  }
-                  className="text-xs font-semibold text-slate-500 hover:text-emerald-700 underline"
-                >
-                  {modo === "codigo"
-                    ? "Acceder con correo (temporal)"
-                    : "Volver al acceso por código institucional"}
-                </button>
               </div>
             </>
           )}
