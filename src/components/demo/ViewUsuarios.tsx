@@ -282,8 +282,6 @@ export default function ViewUsuarios() {
 
                 <IndicadorSeguridadContrasena contrasena={clave} />
 
-                <p className="text-xs text-slate-500">La persona deberá cambiar esta contraseña en su primer acceso. Entrégala mediante un canal seguro.</p>
-
               </div>
 
             ) : (
@@ -395,8 +393,6 @@ export default function ViewUsuarios() {
 
                       {foto && <><p className="max-w-[220px] truncate text-xs text-emerald-700">{foto.name}</p><button type="button" onClick={() => setFoto(null)} className="text-xs font-semibold text-slate-600 underline">Quitar imagen</button></>}
 
-                      <p className="text-xs font-normal text-amber-700">Vista previa; falta conectar el guardado de fotos.</p>
-
                     </div>
 
                   </div>
@@ -433,9 +429,7 @@ export default function ViewUsuarios() {
                           </select>
                         </label>
                       )}
-                      <p className="text-xs font-medium text-amber-700">
-                        {modo === "crear" ? "El alta segura de Profesora y Auxiliar usa Clerk. La opción Secretaría necesita su propio flujo de Supabase Auth." : "Al guardar, el nivel y el aula serán validados por la función segura de Supabase."}
-                      </p>
+                      
                     </div>
                   )}
 
@@ -458,8 +452,6 @@ export default function ViewUsuarios() {
                       <IndicadorSeguridadContrasena contrasena={clave} />
 
                       <p className="text-xs text-slate-500">La persona deberá cambiar esta contraseña al iniciar sesión por primera vez.</p>
-
-                      <p className="text-xs font-semibold text-amber-700">El código consecutivo se asigna al registrar. El correo no es obligatorio. Requiere mínimo 15 caracteres en la contraseña.</p>
 
                     </div>
 

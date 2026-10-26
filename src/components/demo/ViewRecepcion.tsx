@@ -185,7 +185,11 @@ export default function ViewRecepcion() {
 
     const vacio = items.every(it => it.cantidadEntregada === 0);
 
-    const estado = completo ? "Completo" : (vacio ? "Pendiente" : "Incompleto");
+    const estado: Recepcion["estado"] = completo
+  ? "Completo"
+  : vacio
+    ? "Pendiente"
+    : "Incompleto";
 
 
 
@@ -1439,7 +1443,7 @@ export default function ViewRecepcion() {
 
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
 
-                            Lista: <span className="text-emerald-800">{lista.nombre}</span>
+                            Lista: <span className="text-emerald-800">{lista.nivel} - {lista.grado} ({lista.anioEscolar})</span>
 
                           </span>
 

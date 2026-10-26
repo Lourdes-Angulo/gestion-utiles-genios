@@ -65,7 +65,12 @@ export default function ViewEstudiantes() {
   const perfil = usuarios.find(u => u.id === usuarioActivo.id) as
     | (typeof usuarioActivo & { nivel_asignado?: string | null; aula_asignada?: string | null })
     | undefined;
-  const rol = perfil?.rol;
+  const rol = perfil?.rol as
+  | "Administrador"
+  | "Secretaria"
+  | "Profesora"
+  | "Auxiliar"
+  | undefined;
   const esPersonal = rol === "Profesora" || rol === "Auxiliar";
   const nivelAsignado = perfil?.nivel_asignado ?? null;
   const aulaAsignada = perfil?.aula_asignada ?? null;

@@ -1,108 +1,154 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { Calendar, CheckCircle2, Printer } from "lucide-react";
 import {
-  FileText,
-  FileSpreadsheet,
-  Download,
-  Filter,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowDownLeft,
-  ArrowUpRight,
-  TrendingUp,
-  X,
-  Printer,
-  Calendar
-} from "lucide-react";
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend
+  ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 
-export default function ViewReportes() {
-  const { recepciones, utiles, movimientos, predicciones, configuracionColegio } = useApp();
+type TipoReporte = "stock" | "entregas" | "faltantes" | "consumo";
 
-  const [reporteActivo, setReporteActivo] = useState<"stock" | "entregas" | "faltantes" | "consumo">("stock");
-  
-  // Download simulation states
-  const [descargando, setDescargando] = useState(false);
-  const [formatoDescarga, setFormatoDescarga] = useState("");
+const COLORES = {
+  verde: "#10b981",
+  naranja: "#f59e0b",
+  rojo: "#f43f5e",
+  gris: "#64748b",
+};
+
+const tooltipStyle = {
+  backgroundColor: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "12px",
+  fontSize: "12px",
+};
+
+function PanelGrafico({
+  titulo,
+  descripcion,
+  children,
+}: {
+  titulo: string;
+  descripcion: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="glass-card flex flex-col rounded-2xl bg-white p-6">
+      <div className="mb-4 flex items-start gap-2">
+        <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <div>
+          <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-800">
+            {titulo}
+          </h4>
+          <p className="mt-1 text-[11px] text-slate-400">{descripcion}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export default function ViewReportes() {
+  const { recepciones, utiles, movimientos, estudiantes, listas, configuracionColegio } = useApp();
+  const [reporteActivo, setReporteActivo] = useState<TipoReporte>("stock");
   const [descargaExitosa, setDescargaExitosa] = useState(false);
 
-  // 1. Calculate entregas stats
-  const totalEntregas = recepciones.length;
-  const entregasCompletas = recepciones.filter(r => r.estado === "Completo").length;
-  const entregasIncompletas = recepciones.filter(r => r.estado === "Incompleto").length;
-  const entregasPendientes = recepciones.filter(r => r.estado === "Pendiente").length;
+  // Estado por estudiante activo, incluyendo quienes no tienen ninguna recepción.
+  const alumnosReporte = estudiantes.filter((e) => e.estado === "Activo").map((e) => {
+    const lista = listas.find((l) =>
+      l.nivel === e.nivel && l.grado === e.grado &&
+      String(l.anioEscolar) === String(configuracionColegio.anioEscolar)
+    );
+    const recepcion = recepciones
+      .filter((r) => r.estudianteId === e.id)
+      .sort((a, b) => String(b.fechaRecepcion).localeCompare(String(a.fechaRecepcion)))[0];
+    const utilesPendientes = (lista?.items ?? []).map((item) => {
+      const requerido = Math.max(0, Number(item.cantidadRequerida) || 0);
+      const recibido = recepcion?.items.find((it) => it.utilId === item.utilId);
+      const entregado = Math.min(requerido, Math.max(0, Number(recibido?.cantidadEntregada) || 0));
+      return { nombre: item.utilNombre, faltan: requerido - entregado };
+    }).filter((item) => item.faltan > 0);
+    const estado: "Completo" | "Incompleto" | "Pendiente" | "Sin lista" =
+      !lista ? "Sin lista" : !recepcion ? "Pendiente" :
+      utilesPendientes.length === 0 ? "Completo" : "Incompleto";
+    return {
+      id: e.id,
+      estudiante: `${e.nombres} ${e.apellidos}`.trim(),
+      grado: e.grado,
+      entregadoPor: recepcion?.apoderadoNombre || "No registrado",
+      fecha: recepcion?.fechaRecepcion || "Sin entrega",
+      estado,
+      utiles: utilesPendientes,
+    };
+  });
 
-  const dataEntregasChart = [
-    { name: "Completo", value: entregasCompletas, color: "#10b981" },
-    { name: "Incompleto", value: entregasIncompletas, color: "#f59e0b" },
-    { name: "Pendiente", value: entregasPendientes, color: "#64748b" }
+  const alumnosConLista = alumnosReporte.filter((a) => a.estado !== "Sin lista");
+  const entregasCompletas = alumnosConLista.filter((a) => a.estado === "Completo").length;
+  const entregasIncompletas = alumnosConLista.filter((a) => a.estado === "Incompleto").length;
+  const entregasPendientes = alumnosConLista.filter((a) => a.estado === "Pendiente").length;
+  const totalEntregas = alumnosConLista.length;
+
+  const datosEntregas = [
+    { name: "Completo", value: entregasCompletas, color: COLORES.verde },
+    { name: "Incompleto", value: entregasIncompletas, color: COLORES.naranja },
+    { name: "Pendiente", value: entregasPendientes, color: COLORES.gris },
   ];
 
-  // 2. Fetch faltantes data from recepciones
-  const listadoFaltantes = recepciones
-    .filter(r => r.estado === "Incompleto")
-    .map(r => {
-      const utilesFaltantesList = r.items
-        .filter(it => it.cantidadEsperada > it.cantidadEntregada)
-        .map(it => ({
-          nombre: it.utilNombre,
-          faltan: it.cantidadEsperada - it.cantidadEntregada
-        }));
+  // Comparación de stock físico actual frente al mínimo por producto.
+  const datosStock = [...utiles]
+    .sort((a, b) => a.stockActual - a.stockMinimo - (b.stockActual - b.stockMinimo))
+    .slice(0, 10)
+    .map((u) => ({
+      nombre: u.nombre.length > 17 ? `${u.nombre.slice(0, 17)}…` : u.nombre,
+      actual: Math.max(0, Number(u.stockActual) || 0),
+      minimo: Math.max(0, Number(u.stockMinimo) || 0),
+    }));
 
-      return {
-        estudiante: r.estudianteNombre,
-        apoderado: r.apoderadoNombre,
-        grado: r.grado,
-        utiles: utilesFaltantesList
-      };
-    });
+  // Incluye entregas parciales y alumnos sin ninguna recepción.
+  const listadoFaltantes = alumnosReporte.filter((a) =>
+    (a.estado === "Pendiente" || a.estado === "Incompleto") && a.utiles.length > 0
+  );
 
-  const handleDescargar = (formato: "PDF" | "Excel") => {
-    // Otros formatos (Excel) mantienen el comportamiento anterior por ahora
-    if (formato !== "PDF") {
-      setFormatoDescarga(formato);
-      setDescargando(true);
-      setDescargaExitosa(false);
-      setTimeout(() => {
-        setDescargando(false);
-        setDescargaExitosa(true);
-        setTimeout(() => setDescargaExitosa(false), 2500);
-      }, 1800);
-      return;
-    }
+  const datosFaltantes = listadoFaltantes
+    .map((r) => ({
+      alumno: r.estudiante.length > 19
+        ? `${r.estudiante.slice(0, 19)}…`
+        : r.estudiante,
+      faltantes: r.utiles.reduce((total, u) => total + u.faltan, 0),
+    }))
+    .sort((a, b) => b.faltantes - a.faltantes)
+    .slice(0, 8);
 
-    // === Generación de PDF real de la pestaña activa ===
+  // Columnas agrupadas: entradas y salidas en cada fecha registrada.
+  const totalesPorFecha = new Map<string, { fecha: string; entradas: number; salidas: number }>();
+  movimientos.forEach((mov) => {
+    const fecha = String(mov.fecha || "").slice(0, 10);
+    if (!fecha) return;
+    const acumulado = totalesPorFecha.get(fecha) ?? { fecha, entradas: 0, salidas: 0 };
+    const cantidad = Math.abs(Number(mov.cantidad) || 0);
+    if (mov.tipo === "Entrada") acumulado.entradas += cantidad;
+    else if (mov.tipo === "Salida") acumulado.salidas += cantidad;
+    totalesPorFecha.set(fecha, acumulado);
+  });
+  const datosMovimientos = [...totalesPorFecha.values()]
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    .slice(-10)
+    .map((dato) => ({
+      ...dato,
+      etiqueta: dato.fecha.slice(5),
+    }));
+
+  const exportarPDF = () => {
     const doc = new jsPDF();
     const fecha = new Date().toLocaleDateString("es-PE");
-
-    // Encabezado del colegio
     doc.setFontSize(14);
     doc.setTextColor(16, 122, 87);
-    doc.text(configuracionColegio.nombre, 14, 18);
+    doc.text(configuracionColegio.nombre || "I.E.P. Genios del Millennium", 14, 18);
     doc.setFontSize(9);
     doc.setTextColor(120);
     doc.text("Sistema de Gestión de Útiles Escolares", 14, 24);
 
-    // Definir título y datos según la pestaña activa
     let titulo = "";
     let head: string[][] = [];
     const body: (string | number)[][] = [];
@@ -110,365 +156,297 @@ export default function ViewReportes() {
     if (reporteActivo === "stock") {
       titulo = "Reporte de Estado de Stock Físico";
       head = [["Código", "Material Escolar", "Ubicación", "Mínimo", "Actual"]];
-      utiles.forEach(u => body.push([u.codigo, u.nombre, u.ubicación || "-", u.stockMinimo, u.stockActual]));
+      utiles.forEach((u) => body.push([u.codigo, u.nombre, u.ubicación || "-", u.stockMinimo, u.stockActual]));
     } else if (reporteActivo === "entregas") {
       titulo = "Reporte General de Entregas por Alumno";
-      head = [["Estudiante", "Apoderado", "Grado", "Fecha", "Estado"]];
-      recepciones.forEach(r => body.push([r.estudianteNombre, r.apoderadoNombre || "-", r.grado, r.fechaRecepcion, r.estado]));
+      head = [["Estudiante", "Entregado por", "Grado", "Fecha", "Estado"]];
+      alumnosReporte.forEach((r) => body.push([r.estudiante, r.entregadoPor, r.grado, r.fecha, r.estado]));
     } else if (reporteActivo === "faltantes") {
-      titulo = "Reporte de Materiales Faltantes por Cobrar";
-      head = [["Estudiante", "Grado", "Apoderado", "Material", "Faltan"]];
-      listadoFaltantes.forEach(lf => {
-        lf.utiles.forEach((ut: { nombre: string; faltan: number }) => {
-          body.push([lf.estudiante, lf.grado, lf.apoderado || "-", ut.nombre, `${ut.faltan} u.`]);
-        });
+      titulo = "Reporte de Materiales Faltantes por Alumno";
+      head = [["Estudiante", "Grado", "Entregado por", "Material", "Cantidad faltante"]];
+      listadoFaltantes.forEach((r) => {
+        r.utiles.forEach((u) => body.push([r.estudiante, r.grado, r.entregadoPor || "No registrado", u.nombre, u.faltan]));
       });
     } else {
-      titulo = "Resumen Analítico de Consumo";
-      head = [["Fecha", "Material / Útil", "Tipo", "Cant.", "Motivo"]];
-      movimientos.forEach(m => body.push([m.fecha, m.utilNombre, m.tipo, `${m.tipo === "Entrada" ? "+" : "-"}${m.cantidad}`, m.motivo]));
+      titulo = "Resumen de Entradas, Salidas y Movimientos";
+      head = [["Fecha", "Material / Útil", "Tipo", "Cantidad", "Motivo"]];
+      movimientos.forEach((m) => body.push([m.fecha, m.utilNombre, m.tipo, m.cantidad, m.motivo]));
     }
 
-    // Título del reporte + fecha
     doc.setFontSize(11);
     doc.setTextColor(30);
     doc.text(titulo, 14, 34);
     doc.setFontSize(8);
     doc.setTextColor(120);
     doc.text(`Generado: ${fecha}`, 14, 39);
-
-    // Tabla
     autoTable(doc, {
       head,
       body,
       startY: 44,
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [16, 122, 87], textColor: 255 },
-      alternateRowStyles: { fillColor: [245, 248, 250] }
+      alternateRowStyles: { fillColor: [245, 248, 250] },
     });
-
-    const nombreArchivo = `Reporte-${reporteActivo}-${new Date().toISOString().split("T")[0]}.pdf`;
-    doc.save(nombreArchivo);
-
-    // Mensaje de éxito
+    doc.save(`Reporte-${reporteActivo}-${new Date().toISOString().slice(0, 10)}.pdf`);
     setDescargaExitosa(true);
-    setTimeout(() => setDescargaExitosa(false), 2500);
+    window.setTimeout(() => setDescargaExitosa(false), 3000);
   };
 
+  const pestanas: { id: TipoReporte; titulo: string }[] = [
+    { id: "stock", titulo: "Niveles de Stock" },
+    { id: "entregas", titulo: "Estado de Entregas" },
+    { id: "faltantes", titulo: "Útiles Faltantes por Alumno" },
+    { id: "consumo", titulo: "Consumo y Movimientos" },
+  ];
+
   return (
-    <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
-      
-      {/* Simulation Feedback Alert */}
+    <div className="flex-1 space-y-6 overflow-y-auto bg-[#f0f4f8] p-5 md:p-8">
       {descargaExitosa && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center justify-between shadow-xs animate-fade-in">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-            <span className="text-xs font-bold">Reporte oficial exportado en formato .{formatoDescarga.toLowerCase() === "pdf" ? "pdf" : "xlsx"} correctamente. ¡Descarga completada!</span>
-          </div>
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold text-emerald-800">
+          <CheckCircle2 className="h-5 w-5" /> PDF descargado correctamente.
         </div>
       )}
 
-      {/* Selector and Global Export Header */}
-      <div className="glass-card p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        
-        {/* Report tabs */}
-        <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
-          <button
-            onClick={() => setReporteActivo("stock")}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all duration-150 ${
-              reporteActivo === "stock" ? "bg-white text-emerald-950 shadow-xs" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Niveles de Stock
-          </button>
-          <button
-            onClick={() => setReporteActivo("entregas")}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all duration-150 ${
-              reporteActivo === "entregas" ? "bg-white text-emerald-950 shadow-xs" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Estado de Entregas
-          </button>
-          <button
-            onClick={() => setReporteActivo("faltantes")}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all duration-150 ${
-              reporteActivo === "faltantes" ? "bg-white text-emerald-950 shadow-xs" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Útiles Faltantes por Alumno
-          </button>
-          <button
-            onClick={() => setReporteActivo("consumo")}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all duration-150 ${
-              reporteActivo === "consumo" ? "bg-white text-emerald-950 shadow-xs" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Consumo y Movimientos
-          </button>
+      <div className="glass-card flex flex-col justify-between gap-4 p-5 lg:flex-row lg:items-center">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-100 p-1.5">
+          {pestanas.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setReporteActivo(p.id)}
+              className={`rounded-xl px-4 py-2 text-xs font-bold transition-colors ${
+                reporteActivo === p.id
+                  ? "bg-white text-emerald-950 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {p.titulo}
+            </button>
+          ))}
         </div>
-
-        {/* Global Export Buttons */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => handleDescargar("PDF")}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
-          >
-            <Printer className="w-4.5 h-4.5 text-emerald-400" />
-            Descargar PDF
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={exportarPDF}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-900"
+        >
+          <Printer className="h-4 w-4 text-emerald-400" /> Descargar PDF
+        </button>
       </div>
 
-      {/* Dynamic Report Content Layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        
-        {/* LEFT: Tab-specific detailed reporting layout */}
-        <div className="xl:col-span-8 space-y-6">
-          
-          {/* REPORT 1: Stock levels & low indicators */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        <div className="space-y-6 xl:col-span-8">
           {reporteActivo === "stock" && (
-            <div className="glass-card overflow-hidden">
-              <div className="p-6 border-b border-slate-150 bg-slate-50/50">
-                <h4 className="font-extrabold text-slate-800 text-sm">Reporte de Estado de Stock Físico</h4>
-                <p className="text-[10px] text-slate-400 mt-1">Existencias físicas contra stock mínimo de contingencia</p>
+            <section className="glass-card overflow-hidden">
+              <div className="border-b border-slate-200 bg-slate-50/50 p-6">
+                <h4 className="text-sm font-extrabold text-slate-800">Reporte de Estado de Stock Físico</h4>
+                <p className="mt-1 text-[11px] text-slate-400">Existencias físicas frente al stock mínimo</p>
               </div>
-
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[9px] font-bold uppercase tracking-wider">
-                      <th className="p-4 pl-6">Código</th>
-                      <th className="p-4">Material Escolar</th>
-                      <th className="p-4">Ubicación</th>
-                      <th className="p-4 text-center">Mínimo</th>
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-400">
+                    <tr>
+                      <th className="p-4">Código</th><th className="p-4">Material escolar</th>
+                      <th className="p-4">Ubicación</th><th className="p-4 text-center">Mínimo</th>
                       <th className="p-4 text-center">Actual</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                    {utiles.map((ut) => {
-                      const diferencia = ut.stockActual - ut.stockMinimo;
-                      const esBajo = ut.stockActual <= ut.stockMinimo;
-
-                      return (
-                        <tr key={ut.id} className="hover:bg-slate-50/40">
-                          <td className="p-4 pl-6 font-mono font-bold text-slate-400">{ut.codigo}</td>
-                          <td className="p-4 font-bold text-slate-800">{ut.nombre}</td>
-                          <td className="p-4 text-slate-500">{ut.ubicación}</td>
-                          <td className="p-4 text-center">{ut.stockMinimo}</td>
-                          <td className={`p-4 text-center font-black ${esBajo ? "text-rose-500" : "text-emerald-600"}`}>
-                            {ut.stockActual}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                  <tbody className="divide-y divide-slate-100">
+                    {utiles.map((u) => (
+                      <tr key={u.id}>
+                        <td className="p-4 font-mono text-slate-500">{u.codigo}</td>
+                        <td className="p-4 font-bold text-slate-800">{u.nombre}</td>
+                        <td className="p-4 text-slate-500">{u.ubicación || "-"}</td>
+                        <td className="p-4 text-center">{u.stockMinimo}</td>
+                        <td className={`p-4 text-center font-black ${u.stockActual <= u.stockMinimo ? "text-rose-600" : "text-emerald-700"}`}>
+                          {u.stockActual}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
+                {utiles.length === 0 && <p className="p-6 text-center text-sm text-slate-500">No hay materiales registrados.</p>}
               </div>
-            </div>
+            </section>
           )}
 
-          {/* REPORT 2: Estado de Entregas checklist */}
           {reporteActivo === "entregas" && (
-            <div className="glass-card overflow-hidden">
-              <div className="p-6 border-b border-slate-150 bg-slate-50/50">
-                <h4 className="font-extrabold text-slate-800 text-sm">Reporte General de Entregas por Alumno</h4>
-                <p className="text-[10px] text-slate-400 mt-1">Relación total de recepciones registradas por apoderados</p>
+            <section className="glass-card overflow-hidden">
+              <div className="border-b border-slate-200 bg-slate-50/50 p-6">
+                <h4 className="text-sm font-extrabold text-slate-800">Reporte General de Entregas por Alumno</h4>
+                <p className="mt-1 text-[11px] text-slate-400">Estado de entrega de todos los estudiantes activos, incluidos quienes aún no entregan</p>
               </div>
-
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[9px] font-bold uppercase tracking-wider">
-                      <th className="p-4 pl-6">Estudiante</th>
-                      <th className="p-4">Apoderado</th>
-                      <th className="p-4">Grado</th>
-                      <th className="p-4">Fecha Recepción</th>
-                      <th className="p-4 text-center">Estado</th>
-                    </tr>
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-400">
+                    <tr><th className="p-4">Estudiante</th><th className="p-4">Entregado por</th><th className="p-4">Grado</th><th className="p-4">Fecha</th><th className="p-4 text-center">Estado</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                    {recepciones.map((rc) => (
-                      <tr key={rc.id} className="hover:bg-slate-50/40">
-                        <td className="p-4 pl-6 font-bold text-slate-800">{rc.estudianteNombre}</td>
-                        <td className="p-4 text-slate-500">{rc.apoderadoNombre}</td>
-                        <td className="p-4 font-bold text-slate-700">{rc.grado}</td>
-                        <td className="p-4 font-mono text-slate-400">{rc.fechaRecepcion}</td>
+                  <tbody className="divide-y divide-slate-100">
+                    {alumnosReporte.map((r) => (
+                      <tr key={r.id}>
+                        <td className="p-4 font-bold text-slate-800">{r.estudiante}</td>
+                        <td className="p-4 text-slate-500">{r.entregadoPor}</td>
+                        <td className="p-4">{r.grado}</td>
+                        <td className="p-4 text-slate-500">{r.fecha}</td>
                         <td className="p-4 text-center">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                            rc.estado === "Completo" 
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-150" 
-                              : rc.estado === "Incompleto"
-                              ? "bg-amber-50 text-amber-700 border border-amber-150"
-                              : "bg-slate-100 text-slate-500 border border-slate-250"
-                          }`}>
-                            {rc.estado}
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${r.estado === "Completo" ? "bg-emerald-50 text-emerald-700" : r.estado === "Incompleto" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+                            {r.estado}
                           </span>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {alumnosReporte.length === 0 && <p className="p-6 text-center text-sm text-slate-500">No hay estudiantes activos registrados.</p>}
               </div>
-            </div>
+            </section>
           )}
 
-          {/* REPORT 3: Útiles faltantes por estudiante */}
           {reporteActivo === "faltantes" && (
-            <div className="glass-card overflow-hidden">
-              <div className="p-6 border-b border-slate-150 bg-slate-50/50">
-                <h4 className="font-extrabold text-slate-800 text-sm">Reporte de Materiales Faltantes por Cobrar</h4>
-                <p className="text-[10px] text-slate-400 mt-1">Lista pormenorizada de útiles escolares pendientes de entrega por las familias</p>
+            <section className="glass-card overflow-hidden">
+              <div className="border-b border-slate-200 bg-slate-50/50 p-6">
+                <h4 className="text-sm font-extrabold text-slate-800">Materiales Faltantes por Alumno</h4>
+                <p className="mt-1 text-[11px] text-slate-400">Materiales pendientes de entregas parciales y alumnos sin recepción</p>
               </div>
-
               <div className="divide-y divide-slate-100">
-                {listadoFaltantes.length > 0 ? (
-                  listadoFaltantes.map((lf, i) => (
-                    <div key={i} className="p-6 hover:bg-slate-50/30 transition-colors">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-2 mb-3">
-                        <div>
-                          <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-black uppercase">
-                            Entrega Parcial / Incompleta
-                          </span>
-                          <h5 className="text-xs font-bold text-slate-800 mt-1.5">{lf.estudiante}</h5>
-                          <span className="text-[10px] text-slate-400 block font-medium">Grado: {lf.grado}</span>
-                        </div>
-                        <div className="text-right text-[10px] text-slate-400 font-bold">
-                          Apoderado: <span className="text-slate-600">{lf.apoderado}</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {lf.utiles.map((ut, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2.5 bg-rose-50/40 rounded-xl border border-rose-100 text-xs">
-                            <span className="font-bold text-slate-700 truncate pr-3">{ut.nombre}</span>
-                            <span className="text-rose-600 font-black shrink-0">Faltan: {ut.faltan} u.</span>
-                          </div>
-                        ))}
+                {listadoFaltantes.map((r, i) => (
+                  <div key={`${r.estudiante}-${i}`} className="p-6">
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">{r.estado === "Pendiente" ? "SIN ENTREGA" : "ENTREGA INCOMPLETA"}</span>
+                        <h5 className="mt-2 text-xs font-bold text-slate-800">{r.estudiante}</h5>
+                        <p className="text-[11px] text-slate-500">Grado: {r.grado}</p>
+                        <p className="mt-1 text-[11px] text-slate-500">Entregado por: {r.entregadoPor || "No registrado"}</p>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-slate-400 font-bold">
-                    No existen entregas incompletas registradas. ¡Felicitaciones!
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {r.utiles.map((u, j) => (
+                        <div key={`${u.nombre}-${j}`} className="flex justify-between gap-2 rounded-xl border border-rose-100 bg-rose-50/40 p-3 text-xs">
+                          <span className="font-bold text-slate-700">{u.nombre}</span>
+                          <strong className="shrink-0 text-rose-600">Faltan: {u.faltan} u.</strong>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                )}
+                ))}
+                {listadoFaltantes.length === 0 && <p className="p-6 text-center text-sm text-slate-500">No hay útiles faltantes registrados para los estudiantes con listas asignadas.</p>}
               </div>
-            </div>
+            </section>
           )}
 
-          {/* REPORT 4: Consumo por periodo y movimientos */}
           {reporteActivo === "consumo" && (
-            <div className="glass-card overflow-hidden">
-              <div className="p-6 border-b border-slate-150 bg-slate-50/50">
-                <h4 className="font-extrabold text-slate-800 text-sm">Resumen Analítico de Consumo</h4>
-                <p className="text-[10px] text-slate-400 mt-1">Transacciones de salida de almacén por bimestre actual</p>
+            <section className="glass-card overflow-hidden">
+              <div className="border-b border-slate-200 bg-slate-50/50 p-6">
+                <h4 className="text-sm font-extrabold text-slate-800">Resumen Analítico de Consumo y Movimientos</h4>
+                <p className="mt-1 text-[11px] text-slate-400">Entradas y salidas registradas en el almacén</p>
               </div>
-
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[9px] font-bold uppercase tracking-wider">
-                      <th className="p-4 pl-6">Fecha</th>
-                      <th className="p-4">Material / Útil</th>
-                      <th className="p-4 text-center">Tipo</th>
-                      <th className="p-4 text-center">Cant.</th>
-                      <th className="p-4">Motivo de Transacción</th>
-                    </tr>
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-400">
+                    <tr><th className="p-4">Fecha</th><th className="p-4">Material / útil</th><th className="p-4">Tipo</th><th className="p-4">Cantidad</th><th className="p-4">Motivo</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                    {movimientos.map((mov) => (
-                      <tr key={mov.id} className="hover:bg-slate-50/40">
-                        <td className="p-4 pl-6 font-mono text-slate-400">{mov.fecha}</td>
-                        <td className="p-4 font-bold text-slate-800">{mov.utilNombre}</td>
-                        <td className="p-4 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                            mov.tipo === "Entrada" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                          }`}>
-                            {mov.tipo}
-                          </span>
-                        </td>
-                        <td className={`p-4 text-center font-black ${mov.tipo === "Entrada" ? "text-emerald-600" : "text-rose-600"}`}>
-                          {mov.tipo === "Entrada" ? "+" : "-"}{mov.cantidad}
-                        </td>
-                        <td className="p-4 text-slate-500">{mov.motivo}</td>
+                  <tbody className="divide-y divide-slate-100">
+                    {movimientos.map((m) => (
+                      <tr key={m.id}>
+                        <td className="p-4 font-mono text-slate-500">{m.fecha}</td>
+                        <td className="p-4 font-bold text-slate-800">{m.utilNombre}</td>
+                        <td className="p-4"><span className={`rounded px-2 py-1 font-bold ${m.tipo === "Entrada" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-700"}`}>{m.tipo}</span></td>
+                        <td className={`p-4 font-bold ${m.tipo === "Entrada" ? "text-emerald-700" : "text-rose-600"}`}>{m.tipo === "Entrada" ? "+" : "-"}{m.cantidad}</td>
+                        <td className="p-4 text-slate-500">{m.motivo}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {movimientos.length === 0 && <p className="p-6 text-center text-sm text-slate-500">No hay movimientos registrados.</p>}
               </div>
-            </div>
+            </section>
+          )}
+        </div>
+
+        <div className="space-y-6 xl:col-span-4">
+          {reporteActivo === "stock" && (
+            <PanelGrafico titulo="Stock por producto" descripcion="Comparación entre existencias actuales y stock mínimo (10 productos críticos)">
+              {datosStock.length > 0 ? (
+                <div className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={datosStock} layout="vertical" margin={{ top: 5, right: 8, left: 2, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                      <XAxis type="number" allowDecimals={false} fontSize={10} />
+                      <YAxis type="category" dataKey="nombre" width={94} fontSize={10} />
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="actual" name="Stock actual" fill={COLORES.verde} radius={[0, 3, 3, 0]} />
+                      <Bar dataKey="minimo" name="Stock mínimo" fill={COLORES.naranja} radius={[0, 3, 3, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <p className="py-12 text-center text-xs text-slate-500">No hay productos para graficar.</p>}
+            </PanelGrafico>
           )}
 
-        </div>
-
-        {/* RIGHT: Graphical Summaries Bento Grid */}
-        <div className="xl:col-span-4 space-y-6">
-          
-          {/* Chart 1: Entregas completion rate */}
-          <div className="glass-card p-6 flex flex-col">
-            <div className="flex items-center gap-1.5 mb-4">
-              <Calendar className="w-4.5 h-4.5 text-emerald-600" />
-              <div>
-                <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Tasa de Cumplimiento</h4>
-                <p className="text-[10px] text-slate-400 mt-0.5 font-bold">Avance global de entrega de útiles</p>
-              </div>
-            </div>
-
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dataEntregasChart}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {dataEntregasChart.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#1e293b", color: "#f8fafc", borderRadius: "8px", fontSize: "11px", border: "none" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="space-y-2 mt-2">
-              {dataEntregasChart.map((item, i) => (
-                <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                    <span className="text-slate-500 font-bold">{item.name}</span>
-                  </div>
-                  <strong className="text-slate-800 font-black">
-                    {item.value} familias ({Math.round((item.value / Math.max(totalEntregas, 1)) * 100)}%)
-                  </strong>
+          {reporteActivo === "entregas" && (
+            <PanelGrafico titulo="Tasa de cumplimiento" descripcion="Proporción de entregas completas, incompletas y pendientes">
+              {totalEntregas > 0 ? (
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={datosEntregas} dataKey="value" cx="50%" cy="50%" innerRadius={52} outerRadius={75} paddingAngle={3}>
+                        {datosEntregas.map((d) => <Cell key={d.name} fill={d.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={tooltipStyle} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
-          </div>
+              ) : <p className="py-12 text-center text-xs text-slate-500">Sin estudiantes con listas asignadas.</p>}
+              <div className="mt-3 space-y-2">
+                {datosEntregas.map((d) => (
+                  <div key={d.name} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
+                    <span className="flex items-center gap-2 font-bold text-slate-600"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: d.color }} />{d.name}</span>
+                    <strong className="text-slate-800">{d.value} ({Math.round((d.value / Math.max(totalEntregas, 1)) * 100)}%)</strong>
+                  </div>
+                ))}
+              </div>
+            </PanelGrafico>
+          )}
 
+          {reporteActivo === "faltantes" && (
+            <PanelGrafico titulo="Faltantes por alumno" descripcion="Estudiantes con más unidades pendientes, incluso sin primera entrega">
+              {datosFaltantes.length > 0 ? (
+                <div className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={datosFaltantes} layout="vertical" margin={{ top: 5, right: 12, left: 2, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                      <XAxis type="number" allowDecimals={false} fontSize={10} />
+                      <YAxis type="category" dataKey="alumno" width={115} fontSize={10} />
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Bar dataKey="faltantes" name="Unidades faltantes" fill={COLORES.naranja} radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <p className="py-12 text-center text-xs text-slate-500">No hay faltantes para graficar.</p>}
+            </PanelGrafico>
+          )}
 
-
+          {reporteActivo === "consumo" && (
+            <PanelGrafico titulo="Entradas y salidas por fecha" descripcion="Columnas agrupadas de los últimos 10 días con movimientos registrados">
+              {datosMovimientos.length > 0 ? (
+                <div className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={datosMovimientos} margin={{ top: 5, right: 8, left: -20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="etiqueta" fontSize={10} />
+                      <YAxis allowDecimals={false} fontSize={10} />
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="entradas" name="Entradas" fill={COLORES.verde} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="salidas" name="Salidas" fill={COLORES.rojo} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <p className="py-12 text-center text-xs text-slate-500">No hay entradas ni salidas para graficar.</p>}
+            </PanelGrafico>
+          )}
         </div>
-
       </div>
-
-      {/* Export loading dialog */}
-      {descargando && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-3xl shadow-2xl border border-slate-150 max-w-xs w-full text-center space-y-4 animate-scale-up">
-            <div className="w-12 h-12 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin mx-auto" />
-            <div>
-              <h4 className="text-sm font-black text-slate-800">Exportando Reporte</h4>
-              <p className="text-[11px] text-slate-400 mt-1 font-bold">Compilando datos en formato .{formatoDescarga.toLowerCase() === "pdf" ? "pdf" : "xlsx"}...</p>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

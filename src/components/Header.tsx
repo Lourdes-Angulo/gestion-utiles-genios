@@ -1,12 +1,19 @@
 
-import React from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext";
 import { Bell, CircleUserRound } from "lucide-react";
+import { supabase } from "../lib/supabaseClient";
+import { useSupabaseClerk } from "../lib/useSupabaseClerk";
 
 interface HeaderProps {
   vistaActiva: string;
   setVistaActiva: (vista: string) => void;
 }
+
+type PerfilHeader = {
+  nombre: string | null;
+  foto_path: string | null;
+};
 
 export default function Header({
   vistaActiva,
@@ -14,79 +21,272 @@ export default function Header({
 }: HeaderProps) {
   const { alertas, configuracionColegio } = useApp();
 
+  const {
+    cliente: clienteClerk,
+    isLoaded,
+    isSignedIn,
+    clerkUserId,
+  } = useSupabaseClerk();
+
+  const [perfilHeader, setPerfilHeader] =
+    useState<PerfilHeader | null>(null);
+
+  const [fotoPerfilUrl, setFotoPerfilUrl] =
+    useState<string | null>(null);
+
+  // =============================================
+  // CARGAR DATOS DEL USUARIO ACTUAL
+  // =============================================
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    let activo = true;
+
+    async function cargarPerfil() {
+      setPerfilHeader(null);
+      setFotoPerfilUrl(null);
+
+      try {
+        if (isSignedIn && clerkUserId) {
+          const { data, error } = await clienteClerk
+            .from("usuarios")
+            .select("nombre, foto_path")
+            .eq("clerk_user_id", clerkUserId)
+            .eq("estado", "Activo")
+            .maybeSingle();
+
+          if (activo && !error && data) {
+            setPerfilHeader(data as PerfilHeader);
+          }
+        } else {
+          const { data: auth, error: authError } =
+            await supabase.auth.getUser();
+
+          if (authError || !auth.user || !activo) {
+            return;
+          }
+
+          const { data, error } = await supabase
+            .from("usuarios")
+            .select("nombre, foto_path")
+            .eq("authUserId", auth.user.id)
+            .eq("estado", "Activo")
+            .maybeSingle();
+
+          if (activo && !error && data) {
+            setPerfilHeader(data as PerfilHeader);
+          }
+        }
+      } catch (error) {
+        console.error(
+          "No se pudo cargar la foto del encabezado:",
+          error
+        );
+      }
+    }
+
+    void cargarPerfil();
+
+    return () => {
+      activo = false;
+    };
+  }, [
+    isLoaded,
+    isSignedIn,
+    clerkUserId,
+    clienteClerk,
+    vistaActiva,
+  ]);
+
+  // =============================================
+  // CARGAR FOTO DESDE SUPABASE STORAGE
+  // =============================================
+
+  useEffect(() => {
+    let activo = true;
+
+    async function cargarFoto() {
+      setFotoPerfilUrl(null);
+
+      if (!perfilHeader?.foto_path) return;
+
+      try {
+        const cliente =
+          isSignedIn && clerkUserId
+            ? clienteClerk
+            : supabase;
+
+        const { data, error } = await cliente.storage
+          .from("fotos-perfil")
+          .createSignedUrl(
+            perfilHeader.foto_path,
+            3600
+          );
+
+        if (!activo) return;
+
+        if (error) {
+          console.error(
+            "No se pudo acceder a la fotografía:",
+            error.message
+          );
+          return;
+        }
+
+        if (data?.signedUrl) {
+          setFotoPerfilUrl(data.signedUrl);
+        }
+      } catch (error) {
+        console.error(
+          "Error al cargar la fotografía:",
+          error
+        );
+      }
+    }
+
+    void cargarFoto();
+
+    return () => {
+      activo = false;
+    };
+  }, [
+    perfilHeader?.foto_path,
+    isSignedIn,
+    clerkUserId,
+    clienteClerk,
+  ]);
+
+  // =============================================
+  // INICIALES DEL USUARIO
+  // =============================================
+
+  const inicialesHeader =
+    perfilHeader?.nombre
+      ?.trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((parte) => parte[0])
+      .join("")
+      .toUpperCase() || "US";
+
+  // =============================================
+  // ALERTAS
+  // =============================================
+
   const activeAlertsCount = alertas.filter(
     (al) => !al.resuelta
   ).length;
+
+  // =============================================
+  // TÍTULOS DE LOS MÓDULOS
+  // =============================================
 
   const getTituloVista = () => {
     switch (vistaActiva) {
       case "inicio":
         return "Panel de Control General";
+
       case "estudiantes":
         return "Gestión de Estudiantes";
+
       case "utiles":
         return "Catálogo de Útiles Escolares";
+
       case "listas":
         return "Listas Escolares Requeridas";
+
       case "recepcion":
         return "Recepción y Registro de Entregas";
+
       case "control_stock":
         return "Control de Stock y Niveles de Almacén";
+
       case "movimientos":
         return "Historial de Movimientos de Inventario";
+
       case "prediccion":
         return "Predicción de Stock y Demanda";
+
       case "alertas":
         return "Alertas Inteligentes de Inventario";
+
       case "reportes":
         return "Generador de Reportes y Estadísticas";
+
       case "usuarios":
         return "Perfiles de Usuarios y Permisos de Acceso";
+
       case "auditoria":
         return "Historial de Auditoría";
+
       case "mi_perfil":
         return "Mi perfil y Seguridad de la Cuenta";
+
       default:
         return "Sistema de Gestión";
     }
   };
 
+  // =============================================
+  // SUBTÍTULOS DE LOS MÓDULOS
+  // =============================================
+
   const getSubtituloVista = () => {
     switch (vistaActiva) {
       case "inicio":
         return `Resumen actual de inventario, recepciones y proyecciones para el año escolar ${configuracionColegio.anioEscolar}.`;
+
       case "estudiantes":
         return "Fichas de estudiantes matriculados y asignación de listas de útiles.";
+
       case "utiles":
         return "Catálogo unificado de materiales escolares, almacenes y stock mínimo.";
+
       case "listas":
         return "Configuración y asignación de útiles requeridos por grado, nivel y sección.";
+
       case "recepcion":
         return "Control detallado de útiles entregados por los padres y generación de actas.";
+
       case "control_stock":
         return "Monitoreo en tiempo real de entradas, salidas y alertas de stock bajo.";
+
       case "movimientos":
         return "Registro detallado de transacciones de ingreso, egreso, merma y distribución.";
+
       case "prediccion":
         return "Proyecciones analíticas y fechas de quiebre de stock basadas en el consumo registrado.";
+
       case "alertas":
         return "Notificaciones de reabastecimiento urgente, sobreconsumo o inactividad.";
+
       case "reportes":
         return "Generación, visualización y exportación de documentos oficiales del almacén.";
+
       case "usuarios":
         return "Roles institucionales con niveles de acceso adaptados para la I.E.P.";
+
       case "auditoria":
         return "Consulta de actividades y operaciones registradas en el sistema.";
+
       case "mi_perfil":
         return "Consulta tus datos institucionales, cambia tu contraseña y configura tu correo secundario.";
+
       default:
         return "I.E.P. Genios del Millennium";
     }
   };
 
+  // =============================================
+  // INTERFAZ DEL HEADER
+  // =============================================
+
   return (
     <header className="bg-white/90 backdrop-blur-md border-b border-slate-200 h-20 px-8 flex items-center justify-between shadow-sm shrink-0">
-      {/* Título */}
+
+      {/* TÍTULO Y SUBTÍTULO */}
+
       <div>
         <span className="text-[9px] uppercase font-bold text-slate-400 tracking-widest block leading-none mb-1">
           I.E.P. Genios del Millennium • Gestión Escolar
@@ -101,10 +301,12 @@ export default function Header({
         </p>
       </div>
 
-      {/* Controles del encabezado */}
+      {/* CONTROLES DEL ENCABEZADO */}
+
       <div className="flex items-center gap-3">
 
-        {/* Notificaciones */}
+        {/* NOTIFICACIONES */}
+
         <button
           type="button"
           onClick={() => setVistaActiva("alertas")}
@@ -121,7 +323,8 @@ export default function Header({
           )}
         </button>
 
-        {/* Mi perfil */}
+        {/* MI PERFIL CON FOTOGRAFÍA */}
+
         <button
           type="button"
           onClick={() => setVistaActiva("mi_perfil")}
@@ -133,8 +336,31 @@ export default function Header({
               : "border-slate-100 bg-slate-50 text-slate-600 hover:border-emerald-100 hover:text-emerald-700"
           }`}
         >
-          <CircleUserRound size={19} />
-          <span className="hidden sm:inline">Mi perfil</span>
+
+          {/* FOTO O INICIALES */}
+
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-emerald-200 bg-emerald-50">
+
+            {fotoPerfilUrl ? (
+              <img
+                src={fotoPerfilUrl}
+                alt="Fotografía del usuario"
+                className="h-full w-full object-cover"
+              />
+            ) : perfilHeader?.nombre ? (
+              <span className="text-[11px] font-bold text-emerald-700">
+                {inicialesHeader}
+              </span>
+            ) : (
+              <CircleUserRound size={19} />
+            )}
+
+          </div>
+
+          <span className="hidden sm:inline">
+            Mi perfil
+          </span>
+
         </button>
 
       </div>
