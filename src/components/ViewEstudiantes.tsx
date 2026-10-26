@@ -446,7 +446,7 @@ export default function ViewEstudiantes({
 
 
 
-  const rol = perfil?.rol;
+  const rol: Rol | undefined = perfil?.rol as Rol | undefined;
 
   const esPersonal =
 
