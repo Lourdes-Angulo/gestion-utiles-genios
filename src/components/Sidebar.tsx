@@ -59,7 +59,7 @@ export default function Sidebar({
     },
     {
       id: "utiles",
-      label: "Útiles escolares",
+      label: "Catálogo de útiles",
       icon: BookOpen,
     },
     {

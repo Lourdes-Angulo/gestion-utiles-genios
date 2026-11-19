@@ -132,7 +132,7 @@ export default function ViewAlertas() {
                 </div>
               </div>
 
-              {!al.resuelta && ["Administrador", "Secretaria"].includes(usuarioActivo.rol) && (
+              {!al.resuelta && !al.id.startsWith('stock:') && ["Administrador", "Secretaria"].includes(usuarioActivo.rol) && (
                 <button
                   onClick={() => resolverAlerta(al.id)}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2.5 transition-all duration-200 self-start md:self-center shrink-0 shadow-xs"

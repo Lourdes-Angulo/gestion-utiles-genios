@@ -34,7 +34,11 @@ export interface UtilEscolar {
   categoria: string; // e.g. "Cuadernos", "Escritura", "Papelería", "Arte", "Otros"
   unidadMedida: string; // e.g. "Unidad", "Caja", "Paquete", "Docena"
   stockActual: number;
+  stockDisponible?: number;
+  stockComprometido?: number;
+  stockNoApto?: number;
   stockMinimo: number;
+  imagen_url?: string | null;
   ubicación: string; // e.g. "Estante A-1", "Caja 3"
   estado: "Activo" | "Inactivo";
 }
@@ -128,7 +132,7 @@ export interface Usuario {
   id: string;
   nombre: string;
   correo: string;
-  rol: "Administrador" | "Secretaria";
+  rol: "Administrador" | "Secretaria" | "Profesora" | "Auxiliar";
   permisos: string[];
   estado: "Activo" | "Inactivo";
   avatar: string;

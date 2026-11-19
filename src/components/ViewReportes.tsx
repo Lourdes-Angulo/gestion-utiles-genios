@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import ReporteAnual from './ReporteAnual';
 import { useApp } from "../context/AppContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -50,7 +51,10 @@ function PanelGrafico({
 }
 
 export default function ViewReportes() {
-  const { recepciones, utiles, movimientos, estudiantes, listas, configuracionColegio } = useApp();
+  const { recepciones, utiles: productos, movimientos, estudiantes: fichas, listas, configuracionColegio, matriculas, aniosEscolares } = useApp();
+  const utiles = productos.map(u => ({ ...u, stockActual: u.stockDisponible ?? u.stockActual }));
+  const activo = aniosEscolares.find(a => a.estado === 'Activo');
+  const estudiantes = aniosEscolares.length ? fichas.filter(e => matriculas.some(m => m.estudiante_id === e.id && m.anio_id === activo?.id)) : fichas;
   const [reporteActivo, setReporteActivo] = useState<TipoReporte>("stock");
   const [descargaExitosa, setDescargaExitosa] = useState(false);
 
@@ -201,6 +205,7 @@ export default function ViewReportes() {
 
   return (
     <div className="flex-1 space-y-6 overflow-y-auto bg-[#f0f4f8] p-5 md:p-8">
+      <ReporteAnual />
       {descargaExitosa && (
         <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold text-emerald-800">
           <CheckCircle2 className="h-5 w-5" /> PDF descargado correctamente.

@@ -39,7 +39,8 @@ interface ViewInicioProps {
 }
 
 export default function ViewInicio({ setVistaActiva }: ViewInicioProps) {
-  const { estudiantes, utiles, recepciones, alertas, movimientos, configuracionColegio } = useApp();
+  const { estudiantes, utiles: productos, recepciones, alertas, movimientos, configuracionColegio } = useApp();
+  const utiles = productos.map(u => ({ ...u, stockActual: u.stockDisponible ?? u.stockActual }));
 
   // 1. Calculate indicators
   const totalEstudiantes = estudiantes.length;

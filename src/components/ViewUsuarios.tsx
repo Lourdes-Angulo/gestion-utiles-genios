@@ -53,6 +53,7 @@ type PerfilUsuario = {
   id: string;
   nombre: string;
   correo: string | null;
+  correo_pendiente: string | null;
   rol: Rol | string;
   estado: Estado | string;
   authUserId: string | null;
@@ -293,7 +294,7 @@ export default function ViewUsuarios() {
         await supabase
           .from("usuarios")
           .select(
-            "id, nombre, correo, rol, estado, authUserId, dni, origen_nombre, codigo_institucional, nivel_asignado, aula_asignada, foto_path"
+            "id, nombre, correo, correo_pendiente, rol, estado, authUserId, dni, origen_nombre, codigo_institucional, nivel_asignado, aula_asignada, foto_path"
           )
           .order("nombre", {
             ascending: true,
@@ -500,7 +501,7 @@ export default function ViewUsuarios() {
     setSeleccionado(usuario);
     setDni(usuario.dni ?? "");
     setNombre(usuario.nombre);
-    setCorreo(usuario.correo ?? "");
+    setCorreo(usuario.correo_pendiente ?? usuario.correo ?? "");
     setOrigenNombre(
       usuario.origen_nombre ?? "manual"
     );
@@ -887,6 +888,7 @@ export default function ViewUsuarios() {
         usuario.codigo_institucional ?? "",
         usuario.nombre,
         usuario.correo ?? "",
+        usuario.correo_pendiente ?? "",
         usuario.rol,
         usuario.estado,
       ]
@@ -1117,9 +1119,17 @@ export default function ViewUsuarios() {
                                   )}
                                 </div>
 
-                                <div className="break-all text-xs text-slate-500">
-                                  {usuario.correo ||
-                                    "Sin correo de recuperación"}
+                                <div className="space-y-1">
+                                  <p className="break-all text-xs text-slate-500">
+                                    {usuario.correo_pendiente ||
+                                      usuario.correo ||
+                                      "Sin correo de recuperación"}
+                                  </p>
+                                  {usuario.correo_pendiente && (
+                                    <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                                      Pendiente de verificación
+                                    </span>
+                                  )}
                                 </div>
 
                                 {usuario.nivel_asignado && (
@@ -1493,9 +1503,6 @@ export default function ViewUsuarios() {
                         setCorreo(
                           e.target.value
                         )
-                      }
-                      readOnly={
-                        modo === "editar"
                       }
                       disabled={guardando}
                       placeholder="Puedes dejarlo vacío"

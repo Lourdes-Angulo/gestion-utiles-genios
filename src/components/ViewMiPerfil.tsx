@@ -4,13 +4,12 @@ import { useUser } from "@clerk/react";
 import {
   UserRound, Mail, ShieldCheck, LockKeyhole,
   Eye, EyeOff, Save, AlertCircle, CheckCircle2,
-  Clock3, RefreshCw, Send, Plus
+  Clock3, RefreshCw, Send, Plus, Pencil, X
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useSupabaseClerk } from "../lib/useSupabaseClerk";
 import IndicadorSeguridadContrasena from "./IndicadorSeguridadContrasena";
 import { evaluarContrasena } from "../lib/passwordPolicy";
-
 type Perfil = {
   nombre: string | null;
   correo: string | null;
@@ -22,30 +21,24 @@ type Perfil = {
   aula_asignada: string | null;
   foto_path: string | null;
 };
-
 type EstadoCorreo = {
   correo_secundario: string | null;
   verificado: boolean;
   correo_pendiente: string | null;
 };
-
 const caja =
   "rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 break-all";
-
 const entrada =
   "w-full max-w-lg rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 disabled:opacity-60";
-
 function correoVisible(valor?: string | null): string {
   const email = valor?.trim() ?? "";
   return email.toLowerCase().endsWith("@auth.invalid")
     ? ""
     : email;
 }
-
 function mensajeError(error: unknown, alternativo: string): string {
   return error instanceof Error ? error.message : alternativo;
 }
-
 export default function ViewMiPerfil() {
   const {
     cliente: clienteClerk,
@@ -53,34 +46,31 @@ export default function ViewMiPerfil() {
     isSignedIn,
     clerkUserId,
   } = useSupabaseClerk();
-
   const { user: usuarioClerk } = useUser();
-
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [proveedor, setProveedor] =
     useState<"clerk" | "supabase" | null>(null);
-
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [errorFoto, setErrorFoto] = useState(false);
   const [guardandoFoto, setGuardandoFoto] = useState(false);
-
   const [correoAuth, setCorreoAuth] = useState("");
   const [correoVerificado, setCorreoVerificado] = useState(false);
   const [estadoCorreo, setEstadoCorreo] =
     useState<EstadoCorreo | null>(null);
-
   const [cargando, setCargando] = useState(true);
   const [actualizando, setActualizando] = useState(false);
   const [guardando, setGuardando] = useState(false);
-
   const [mensaje, setMensaje] = useState("");
+  const [editandoDatos, setEditandoDatos] = useState(false);
+  const [nombreEditado, setNombreEditado] = useState("");
+  const [dniEditado, setDniEditado] = useState("");
+  const [correoEditado, setCorreoEditado] = useState("");
+  const [guardandoDatos, setGuardandoDatos] = useState(false);
   const [error, setError] = useState("");
-
   const [actual, setActual] = useState("");
   const [nueva, setNueva] = useState("");
   const [confirmar, setConfirmar] = useState("");
   const [mostrar, setMostrar] = useState(false);
-
   const [mostrarAgregarCorreo, setMostrarAgregarCorreo] =
     useState(false);
   const [nuevoCorreo, setNuevoCorreo] = useState("");
@@ -91,19 +81,15 @@ export default function ViewMiPerfil() {
   const [emailPendiente, setEmailPendiente] = useState("");
   const [procesandoCorreo, setProcesandoCorreo] =
     useState(false);
-
   // ============================================
   // CARGAR PERFIL INSTITUCIONAL
   // ============================================
-
   useEffect(() => {
     if (!isLoaded) return;
     let vigente = true;
-
     async function cargar() {
       setCargando(true);
       setError("");
-
       try {
         if (isSignedIn && clerkUserId) {
           const { data, error: fallo } = await clienteClerk
@@ -113,7 +99,6 @@ export default function ViewMiPerfil() {
             )
             .eq("clerk_user_id", clerkUserId)
             .maybeSingle();
-
           if (
             fallo || !data || data.estado !== "Activo" ||
             data.debe_cambiar_contrasena
@@ -122,7 +107,6 @@ export default function ViewMiPerfil() {
               "No se pudo validar tu perfil institucional con Clerk."
             );
           }
-
           if (vigente) {
             setPerfil(data as Perfil);
             setProveedor("clerk");
@@ -138,13 +122,11 @@ export default function ViewMiPerfil() {
         } else {
           const { data: auth, error: errorAuth } =
             await supabase.auth.getUser();
-
           if (errorAuth || !auth.user) {
             throw new Error(
               "No existe una sesión autenticada."
             );
           }
-
           const { data, error: fallo } = await supabase
             .from("usuarios")
             .select(
@@ -152,21 +134,17 @@ export default function ViewMiPerfil() {
             )
             .eq("authUserId", auth.user.id)
             .maybeSingle();
-
           if (fallo || !data || data.estado !== "Activo") {
             throw new Error(
               "No se pudo validar tu perfil institucional."
             );
           }
-
           const resultado = await supabase.rpc(
             "obtener_mi_estado_correo"
           );
-
           const extra = Array.isArray(resultado.data)
             ? resultado.data[0] ?? null
             : resultado.data ?? null;
-
           if (vigente) {
             setPerfil(data as Perfil);
             setProveedor("supabase");
@@ -190,9 +168,7 @@ export default function ViewMiPerfil() {
         if (vigente) setCargando(false);
       }
     }
-
     void cargar();
-
     return () => {
       vigente = false;
     };
@@ -200,61 +176,45 @@ export default function ViewMiPerfil() {
     isLoaded, isSignedIn, clerkUserId,
     clienteClerk, usuarioClerk
   ]);
-
   // ============================================
   // OBTENER FOTO PRIVADA
   // ============================================
-
   useEffect(() => {
     let vigente = true;
-
     async function cargarFoto() {
       setFotoUrl(null);
       setErrorFoto(false);
-
       if (!perfil?.foto_path || !proveedor) return;
-
       const cliente =
         proveedor === "clerk" ? clienteClerk : supabase;
-
       const { data, error } = await cliente.storage
         .from("fotos-perfil")
         .createSignedUrl(perfil.foto_path, 3600);
-
       if (!vigente) return;
-
       if (error || !data?.signedUrl) {
         setErrorFoto(true);
         return;
       }
-
       setFotoUrl(data.signedUrl);
     }
-
     void cargarFoto();
-
     return () => {
       vigente = false;
     };
   }, [perfil?.foto_path, proveedor, clienteClerk]);
-
   // ============================================
   // SUBIR O CAMBIAR FOTO
   // ============================================
-
   const cambiarFoto = async (archivo?: File) => {
     if (!archivo || !perfil || !proveedor || guardandoFoto) {
       return;
     }
-
     const extensiones: Record<string, string> = {
       "image/jpeg": "jpg",
       "image/png": "png",
       "image/webp": "webp",
     };
-
     const extension = extensiones[archivo.type];
-
     if (
       !extension ||
       archivo.size > 2 * 1024 * 1024 ||
@@ -265,21 +225,16 @@ export default function ViewMiPerfil() {
       );
       return;
     }
-
     setGuardandoFoto(true);
     setError("");
     setMensaje("");
-
     const cliente =
       proveedor === "clerk" ? clienteClerk : supabase;
-
     let rutaNueva: string | null = null;
     let subidaRealizada = false;
     let perfilVinculado = false;
-
     try {
       let identificador: string;
-
       if (proveedor === "clerk") {
         if (!clerkUserId) {
           throw new Error("No existe una sesión Clerk válida.");
@@ -287,17 +242,13 @@ export default function ViewMiPerfil() {
         identificador = clerkUserId;
       } else {
         const { data, error } = await supabase.auth.getUser();
-
         if (error || !data.user) {
           throw new Error("Debes iniciar sesión nuevamente.");
         }
-
         identificador = data.user.id;
       }
-
       const rutaAnterior = perfil.foto_path;
       rutaNueva = `${identificador}/${crypto.randomUUID()}.${extension}`;
-
       // 1. Subir archivo en la carpeta del propio usuario.
       const { error: errorSubida } = await cliente.storage
         .from("fotos-perfil")
@@ -306,10 +257,8 @@ export default function ViewMiPerfil() {
           upsert: false,
           cacheControl: "3600",
         });
-
       if (errorSubida) throw errorSubida;
       subidaRealizada = true;
-
       // 2. Actualizar exclusivamente foto_path.
       //    Esta función SQL ya fue creada en Supabase.
       const {
@@ -318,29 +267,23 @@ export default function ViewMiPerfil() {
       } = await cliente.rpc("sigue_actualizar_mi_foto", {
         p_foto_path: rutaNueva,
       });
-
       if (errorActualizacion) throw errorActualizacion;
-
       if (rutaGuardada !== rutaNueva) {
         throw new Error(
           "Supabase no confirmó la vinculación de la foto."
         );
       }
-
       perfilVinculado = true;
-
       // 3. Obtener URL firmada para mostrar la imagen.
       const { data: firma, error: errorFirma } =
         await cliente.storage
           .from("fotos-perfil")
           .createSignedUrl(rutaNueva, 3600);
-
       setPerfil((anterior) =>
         anterior
           ? { ...anterior, foto_path: rutaNueva }
           : anterior
       );
-
       if (!errorFirma && firma?.signedUrl) {
         setFotoUrl(firma.signedUrl);
         setErrorFoto(false);
@@ -348,20 +291,16 @@ export default function ViewMiPerfil() {
         setFotoUrl(null);
         setErrorFoto(true);
       }
-
       setMensaje("Fotografía actualizada correctamente.");
-
       // Avisar a otros componentes que la foto cambió.
       window.dispatchEvent(
         new CustomEvent("sigue-foto-actualizada")
       );
-
       // 4. Limpiar la fotografía anterior.
       if (rutaAnterior && rutaAnterior !== rutaNueva) {
         const { error: errorBorrado } = await cliente.storage
           .from("fotos-perfil")
           .remove([rutaAnterior]);
-
         if (errorBorrado) {
           console.warn(
             "No se pudo eliminar la fotografía anterior.",
@@ -377,7 +316,6 @@ export default function ViewMiPerfil() {
           .from("fotos-perfil")
           .remove([rutaNueva]);
       }
-
       setError(
         mensajeError(e, "No se pudo actualizar la fotografía.")
       );
@@ -385,60 +323,47 @@ export default function ViewMiPerfil() {
       setGuardandoFoto(false);
     }
   };
-
   // ============================================
   // ELIMINAR FOTO
   // ============================================
-
   const eliminarFoto = async () => {
     if (!perfil?.foto_path || !proveedor || guardandoFoto) {
       return;
     }
-
     if (!window.confirm("¿Deseas eliminar tu foto de perfil?")) {
       return;
     }
-
     setGuardandoFoto(true);
     setError("");
     setMensaje("");
-
     const cliente =
       proveedor === "clerk" ? clienteClerk : supabase;
-
     try {
       const rutaAnterior = perfil.foto_path;
-
       // Desvincular primero la foto de usuarios.
       const {
         error: errorActualizacion,
       } = await cliente.rpc("sigue_actualizar_mi_foto", {
         p_foto_path: null,
       });
-
       if (errorActualizacion) {
         throw errorActualizacion;
       }
-
       setPerfil((anterior) =>
         anterior
           ? { ...anterior, foto_path: null }
           : anterior
       );
-
       setFotoUrl(null);
       setErrorFoto(false);
       setMensaje("Fotografía eliminada del perfil.");
-
       window.dispatchEvent(
         new CustomEvent("sigue-foto-actualizada")
       );
-
       // Limpiar Storage.
       const { error: errorBorrado } = await cliente.storage
         .from("fotos-perfil")
         .remove([rutaAnterior]);
-
       if (errorBorrado) {
         console.warn(
           "No se pudo borrar el archivo anterior.",
@@ -453,24 +378,19 @@ export default function ViewMiPerfil() {
       setGuardandoFoto(false);
     }
   };
-
   // ============================================
   // ACTUALIZAR ESTADO DE CORREO
   // ============================================
-
   const actualizarEstado = async () => {
     setActualizando(true);
     setError("");
     setMensaje("");
-
     try {
       if (proveedor === "clerk") {
         await usuarioClerk?.reload();
-
         setCorreoAuth(correoVisible(
           usuarioClerk?.primaryEmailAddress?.emailAddress
         ));
-
         setCorreoVerificado(
           usuarioClerk?.primaryEmailAddress?.verification
             ?.status === "verified"
@@ -478,21 +398,17 @@ export default function ViewMiPerfil() {
       } else {
         const { data, error: fallo } =
           await supabase.auth.getUser();
-
         if (fallo || !data.user) {
           throw new Error("Sesión no disponible.");
         }
-
         setCorreoAuth(correoVisible(data.user.email));
         setCorreoVerificado(
           Boolean(data.user.email_confirmed_at) &&
           Boolean(correoVisible(data.user.email))
         );
-
         const extra = await supabase.rpc(
           "obtener_mi_estado_correo"
         );
-
         setEstadoCorreo(
           extra.error
             ? null
@@ -501,7 +417,6 @@ export default function ViewMiPerfil() {
               : extra.data
         );
       }
-
       setMensaje("Información de correo actualizada.");
     } catch (e) {
       setError(
@@ -511,20 +426,15 @@ export default function ViewMiPerfil() {
       setActualizando(false);
     }
   };
-
   // ============================================
   // AGREGAR CORREO DE RECUPERACIÓN
   // ============================================
-
   const agregarCorreo = async (e: FormEvent) => {
     e.preventDefault();
     if (procesandoCorreo) return;
-
     setError("");
     setMensaje("");
-
     const correo = nuevoCorreo.trim().toLowerCase();
-
     if (
       correo.length > 254 ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)
@@ -532,25 +442,20 @@ export default function ViewMiPerfil() {
       setError("Introduce una dirección de correo válida.");
       return;
     }
-
     setProcesandoCorreo(true);
-
     try {
       if (proveedor === "clerk") {
         if (!usuarioClerk) {
           throw new Error("No hay sesión de Clerk disponible.");
         }
-
         const existente = usuarioClerk.emailAddresses.find(
           (ea) => ea.emailAddress.toLowerCase() === correo
         );
-
         const email =
           existente ??
           (await usuarioClerk.createEmailAddress({
             email: correo,
           }));
-
         if (email.verification?.status === "verified") {
           setMensaje("Este correo ya está verificado en Clerk.");
           setCorreoAuth(email.emailAddress);
@@ -558,15 +463,12 @@ export default function ViewMiPerfil() {
           setMostrarAgregarCorreo(false);
           return;
         }
-
         await email.prepareVerification({
           strategy: "email_code",
         });
-
         setCorreoPendienteId(email.id);
         setEmailPendiente(correo);
         setCodigoVerificacion("");
-
         setMensaje(
           "Se envió un código de verificación a tu correo."
         );
@@ -576,40 +478,31 @@ export default function ViewMiPerfil() {
             "solicitar-verificacion-correo",
             { body: { correo } }
           );
-
         if (fallo) {
           let detalle = "No se pudo solicitar la verificación.";
-
           if (fallo.context instanceof Response) {
             const cuerpo = await fallo.context
               .clone()
               .json()
               .catch(() => null);
-
             if (typeof cuerpo?.error === "string") {
               detalle = cuerpo.error;
             }
           }
-
           throw new Error(detalle);
         }
-
         if (!data?.ok) {
           throw new Error(
             data?.error || "No se pudo solicitar la verificación."
           );
         }
-
         setEmailPendiente(correo);
-
         setMensaje(
           "Solicitud enviada. Revisa tu correo y sigue el enlace de verificación."
         );
-
         const extra = await supabase.rpc(
           "obtener_mi_estado_correo"
         );
-
         if (!extra.error) {
           setEstadoCorreo(
             Array.isArray(extra.data)
@@ -629,7 +522,6 @@ export default function ViewMiPerfil() {
           }[];
         }
       )?.errors;
-
       setError(
         detalles?.[0]?.longMessage ||
         detalles?.[0]?.message ||
@@ -639,51 +531,120 @@ export default function ViewMiPerfil() {
       setProcesandoCorreo(false);
     }
   };
-
   // ============================================
-  // VERIFICAR CORREO CLERK
+  // REENVIAR VERIFICACIÓN PENDIENTE
   // ============================================
 
-  const verificarCorreoClerk = async (e: FormEvent) => {
-    e.preventDefault();
-
-    if (!usuarioClerk || !correoPendienteId || procesandoCorreo) {
-      return;
-    }
+  const reenviarVerificacion = async () => {
+    if (procesandoCorreo || !proveedor) return;
 
     setError("");
     setMensaje("");
     setProcesandoCorreo(true);
 
     try {
+      if (proveedor === "supabase") {
+        // Priorizar el correo pendiente del administrador y,
+        // en su defecto, la solicitud previa del usuario.
+        const correo = correoVisible(
+          estadoCorreo?.correo_pendiente ||
+          (!estadoCorreo?.verificado
+            ? estadoCorreo?.correo_secundario
+            : null)
+        ).toLowerCase();
+
+        if (!correo) {
+          throw new Error("No existe un correo pendiente para reenviar.");
+        }
+
+        const { data, error: fallo } = await supabase.functions.invoke(
+          "solicitar-verificacion-correo",
+          { body: { correo } }
+        );
+
+        if (fallo) {
+          let detalle = fallo.message || "No se pudo reenviar la verificación.";
+          if (fallo.context instanceof Response) {
+            const cuerpo = await fallo.context.clone().json().catch(() => null);
+            if (typeof cuerpo?.error === "string") detalle = cuerpo.error;
+          }
+          throw new Error(detalle);
+        }
+
+        if (!data?.ok) {
+          throw new Error(data?.error || "El servidor no confirmó el envío.");
+        }
+
+        setEmailPendiente(correo);
+        setMensaje("Te enviamos un nuevo enlace. Revisa Recibidos y Spam. El enlace vence en 15 minutos.");
+        const { data: estado, error: estadoError } = await supabase.rpc(
+          "obtener_mi_estado_correo"
+        );
+        if (!estadoError) {
+          setEstadoCorreo(
+            Array.isArray(estado) ? estado[0] ?? null : estado ?? null
+          );
+        }
+      } else {
+        if (!usuarioClerk) throw new Error("Tu sesión de Clerk no está disponible.");
+        const pendiente = usuarioClerk.emailAddresses.find(
+          (ea) => ea.verification?.status !== "verified" &&
+            (ea.id === correoPendienteId ||
+             ea.emailAddress.toLowerCase() === emailPendiente.toLowerCase())
+        );
+        if (!pendiente) {
+          throw new Error("No hay una dirección pendiente para reenviar.");
+        }
+        await pendiente.prepareVerification({ strategy: "email_code" });
+        setCorreoPendienteId(pendiente.id);
+        setEmailPendiente(pendiente.emailAddress);
+        setMensaje("Enviamos un nuevo código de verificación.");
+        setMostrarAgregarCorreo(true);
+      }
+    } catch (e) {
+      const fallos = (e as { errors?: { longMessage?: string; message?: string }[] })?.errors;
+      setError(
+        fallos?.[0]?.longMessage || fallos?.[0]?.message ||
+        mensajeError(e, "No se pudo reenviar el correo.")
+      );
+    } finally {
+      setProcesandoCorreo(false);
+    }
+  };
+
+  // ============================================
+  // VERIFICAR CORREO CLERK
+  // ============================================
+  const verificarCorreoClerk = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!usuarioClerk || !correoPendienteId || procesandoCorreo) {
+      return;
+    }
+    setError("");
+    setMensaje("");
+    setProcesandoCorreo(true);
+    try {
       const email = usuarioClerk.emailAddresses.find(
         (item) => item.id === correoPendienteId
       );
-
       if (!email) {
         throw new Error(
           "No encontramos el correo pendiente. Actualiza e intenta otra vez."
         );
       }
-
       const resultado = await email.attemptVerification({
         code: codigoVerificacion.trim(),
       });
-
       if (resultado.verification?.status !== "verified") {
         throw new Error("El código no pudo verificarse.");
       }
-
       await usuarioClerk.reload();
-
       setCorreoPendienteId(null);
       setCodigoVerificacion("");
       setNuevoCorreo("");
       setMostrarAgregarCorreo(false);
-
       setCorreoAuth(correoVisible(email.emailAddress));
       setCorreoVerificado(true);
-
       setMensaje("Correo verificado correctamente en Clerk.");
     } catch (e) {
       const detalles = (
@@ -694,7 +655,6 @@ export default function ViewMiPerfil() {
           }[];
         }
       )?.errors;
-
       setError(
         detalles?.[0]?.longMessage ||
         detalles?.[0]?.message ||
@@ -704,23 +664,18 @@ export default function ViewMiPerfil() {
       setProcesandoCorreo(false);
     }
   };
-
   // ============================================
   // CAMBIO DE CONTRASEÑA
   // ============================================
-
   const cambiarContrasena = async (e: FormEvent) => {
     e.preventDefault();
     if (guardando) return;
-
     setError("");
     setMensaje("");
-
     if (!perfil || perfil.estado !== "Activo") {
       setError("Cuenta no autorizada.");
       return;
     }
-
     if (
       nueva.length < 15 ||
       nueva.length > 128 ||
@@ -731,22 +686,18 @@ export default function ViewMiPerfil() {
       );
       return;
     }
-
     if (actual === nueva || nueva !== confirmar) {
       setError(
         "Revisa la contraseña actual y la confirmación."
       );
       return;
     }
-
     setGuardando(true);
-
     try {
       if (proveedor === "clerk") {
         if (!usuarioClerk) {
           throw new Error("Sesión Clerk no disponible.");
         }
-
         await usuarioClerk.updatePassword({
           currentPassword: actual,
           newPassword: nueva,
@@ -755,34 +706,28 @@ export default function ViewMiPerfil() {
       } else if (proveedor === "supabase") {
         const { data, error: authError } =
           await supabase.auth.getUser();
-
         if (authError || !data.user?.email) {
           throw new Error(
             "Tu sesión de autenticación no está disponible."
           );
         }
-
         // Revalidar contraseña actual.
         const { error: verificarError } =
           await supabase.auth.signInWithPassword({
             email: data.user.email,
             password: actual,
           });
-
         if (verificarError) {
           throw new Error("La contraseña actual es incorrecta.");
         }
-
         const { error: guardarError } =
           await supabase.auth.updateUser({
             password: nueva,
           });
-
         if (guardarError) throw guardarError;
       } else {
         throw new Error("No existe una sesión válida.");
       }
-
       setActual("");
       setNueva("");
       setConfirmar("");
@@ -796,7 +741,6 @@ export default function ViewMiPerfil() {
           }[];
         }
       )?.errors;
-
       setError(
         fallos?.[0]?.longMessage ||
         fallos?.[0]?.message ||
@@ -806,11 +750,118 @@ export default function ViewMiPerfil() {
       setGuardando(false);
     }
   };
+  // ============================================
+  // ACTUALIZAR NOMBRE Y DNI INSTITUCIONALES
+  // ============================================
+  const guardarDatos = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!perfil || !proveedor || guardandoDatos) return;
 
+    const nombre = nombreEditado.trim().replace(/\s+/g, " ");
+    const dni = dniEditado.trim();
+    const correo = correoEditado.trim().toLowerCase();
+    const correoActual = correoVisible(
+      estadoCorreo?.verificado ? estadoCorreo.correo_secundario : correoAuth
+    ).toLowerCase();
+    const cambioDatos = nombre !== perfil.nombre || dni !== perfil.dni;
+    const cambioCorreo = correo !== correoActual;
+
+    if (nombre.length < 5 || nombre.length > 150) {
+      setError("El nombre debe contener entre 5 y 150 caracteres.");
+      return;
+    }
+    if (!/^[0-9]{8}$/.test(dni)) {
+      setError("El DNI debe contener exactamente 8 dígitos.");
+      return;
+    }
+    if (cambioCorreo && (correo.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo))) {
+      setError("Ingresa un correo válido para solicitar su verificación.");
+      return;
+    }
+    if (!cambioDatos && !cambioCorreo) {
+      setEditandoDatos(false);
+      return;
+    }
+
+    setGuardandoDatos(true);
+    setError("");
+    setMensaje("");
+    let datosGuardados = false;
+    try {
+      const cliente = proveedor === "clerk" ? clienteClerk : supabase;
+      if (cambioDatos) {
+        const { data, error: fallo } = await cliente.rpc(
+          "sigue_actualizar_mis_datos",
+          { p_nombre: nombre, p_dni: dni }
+        );
+        if (fallo) throw fallo;
+        const resultado = Array.isArray(data) ? data[0] : data;
+        if (!resultado || resultado.nombre !== nombre || resultado.dni !== dni) {
+          throw new Error("Supabase no confirmó la actualización de nombre y DNI.");
+        }
+        setPerfil((anterior) => anterior
+          ? { ...anterior, nombre: resultado.nombre, dni: resultado.dni }
+          : anterior);
+        datosGuardados = true;
+      }
+
+      if (cambioCorreo) {
+        // El correo NO se cambia directamente en usuarios ni en auth.users.
+        // Se solicita una verificación y solo el flujo existente lo confirma.
+        if (proveedor === "supabase") {
+          const { data, error: fallo } = await supabase.functions.invoke(
+            "solicitar-verificacion-correo",
+            { body: { correo } }
+          );
+          if (fallo) {
+            let detalle = fallo.message || "No se pudo solicitar la verificación del correo.";
+            if (fallo.context instanceof Response) {
+              const cuerpo = await fallo.context.clone().json().catch(() => null);
+              if (typeof cuerpo?.error === "string") detalle = cuerpo.error;
+            }
+            throw new Error(detalle);
+          }
+          if (!data?.ok) throw new Error(data?.error || "No se confirmó el envío de verificación.");
+          setEmailPendiente(correo);
+          const { data: estado, error: falloEstado } = await supabase.rpc("obtener_mi_estado_correo");
+          if (!falloEstado) {
+            setEstadoCorreo(Array.isArray(estado) ? estado[0] ?? null : estado ?? null);
+          }
+        } else {
+          if (!usuarioClerk) throw new Error("Sesión Clerk no disponible.");
+          const existente = usuarioClerk.emailAddresses.find(
+            (item) => item.emailAddress.toLowerCase() === correo
+          );
+          const email = existente ?? await usuarioClerk.createEmailAddress({ email: correo });
+          if (email.verification?.status === "verified") {
+            setCorreoAuth(email.emailAddress);
+            setCorreoVerificado(true);
+          } else {
+            await email.prepareVerification({ strategy: "email_code" });
+            setCorreoPendienteId(email.id);
+            setEmailPendiente(correo);
+            setCodigoVerificacion("");
+            setMostrarAgregarCorreo(true);
+          }
+        }
+      }
+
+      setEditandoDatos(false);
+      setMensaje(cambioCorreo
+        ? `${cambioDatos ? "Nombre y DNI guardados. " : ""}Se solicitó la verificación del correo. El cambio no será efectivo hasta verificarlo.`
+        : "Nombre y DNI actualizados correctamente.");
+    } catch (e) {
+      setError((datosGuardados ? "Nombre y DNI guardados, pero el correo no se pudo tramitar. " : "") +
+        mensajeError(e, "No se pudieron guardar los datos."));
+    } finally {
+      setGuardandoDatos(false);
+    }
+  };
+
+  // ============================================
   // ============================================
   // INTERFAZ
   // ============================================
-
   if (cargando) {
     return (
       <div className="flex-1 p-8 text-center text-slate-500">
@@ -818,15 +869,12 @@ export default function ViewMiPerfil() {
       </div>
     );
   }
-
   const correoRecuperacion = correoVisible(
     estadoCorreo?.verificado
       ? estadoCorreo.correo_secundario
       : correoAuth
   );
-
   const vinculado = Boolean(correoRecuperacion);
-
   const iniciales =
     perfil?.nombre
       ?.trim()
@@ -835,7 +883,6 @@ export default function ViewMiPerfil() {
       .map((parte) => parte[0])
       .join("")
       .toUpperCase() || "US";
-
   const datosPerfil: [string, string][] = [
     ["Nombre completo", perfil?.nombre || "No registrado"],
     ["DNI", perfil?.dni || "No registrado"],
@@ -854,7 +901,6 @@ export default function ViewMiPerfil() {
     ["Aula asignada", perfil?.aula_asignada || "No aplica"],
     ["Correo asociado", correoRecuperacion || "No vinculado"],
   ];
-
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -868,7 +914,6 @@ export default function ViewMiPerfil() {
             y opciones de seguridad.
           </p>
         </header>
-
         {error && (
           <div
             role="alert"
@@ -878,7 +923,6 @@ export default function ViewMiPerfil() {
             {error}
           </div>
         )}
-
         {mensaje && (
           <div
             role="status"
@@ -888,19 +932,34 @@ export default function ViewMiPerfil() {
             {mensaje}
           </div>
         )}
-
         {perfil && (
           <>
             {/* INFORMACIÓN INSTITUCIONAL */}
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-7 flex items-center gap-2 text-lg font-bold text-slate-800">
-                <UserRound
-                  size={21}
-                  className="text-emerald-600"
-                />
-                Información institucional
-              </h2>
-
+              <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800">
+                  <UserRound size={21} className="text-emerald-600" />
+                  Información institucional
+                </h2>
+                {(["Administrador", "Directora"].includes(perfil.rol || "")) && !editandoDatos && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNombreEditado(perfil.nombre ?? "");
+                      setDniEditado(perfil.dni ?? "");
+                      setCorreoEditado(correoVisible(
+                        estadoCorreo?.verificado ? estadoCorreo.correo_secundario : correoAuth
+                      ));
+                      setEditandoDatos(true);
+                      setError("");
+                      setMensaje("");
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    <Pencil size={16} /> Editar información
+                  </button>
+                )}
+              </div>
               <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
                 {/* FOTO */}
                 <div className="flex w-full shrink-0 flex-col items-center justify-center gap-3 lg:w-[30%]">
@@ -917,7 +976,6 @@ export default function ViewMiPerfil() {
                       </span>
                     )}
                   </div>
-
                   <div className="mt-2 space-y-1 text-center">
                     <p className="text-base font-bold text-slate-800">
                       {perfil.nombre || "Usuario"}
@@ -938,7 +996,6 @@ export default function ViewMiPerfil() {
                       </p>
                     )}
                   </div>
-
                   <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                     <label
                       htmlFor="cambiar-foto-perfil"
@@ -952,7 +1009,6 @@ export default function ViewMiPerfil() {
                         ? "Guardando..."
                         : "Cambiar foto"}
                     </label>
-
                     <input
                       id="cambiar-foto-perfil"
                       type="file"
@@ -964,7 +1020,6 @@ export default function ViewMiPerfil() {
                         e.target.value = "";
                       }}
                     />
-
                     {perfil.foto_path && (
                       <button
                         type="button"
@@ -976,26 +1031,99 @@ export default function ViewMiPerfil() {
                       </button>
                     )}
                   </div>
-
                   <p className="text-center text-xs text-slate-400">
                     JPG, PNG o WebP · Máximo 2 MB
                   </p>
                 </div>
-
-                {/* DATOS A LA DERECHA */}
-                <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
-                  {datosPerfil.map(([etiqueta, valor]) => (
-                    <div key={etiqueta} className="min-w-0">
-                      <label className="mb-2 block text-sm font-semibold text-slate-600">
-                        {etiqueta}
-                      </label>
-                      <div className={caja}>{valor}</div>
+                {/* DATOS A LA DERECHA: edición directamente en sus casillas */}
+                <form
+                  onSubmit={guardarDatos}
+                  className="min-w-0 flex-1"
+                >
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {datosPerfil.map(([etiqueta, valor]) => (
+                      <div key={etiqueta} className="min-w-0">
+                        <label
+                          htmlFor={editandoDatos && etiqueta === "Nombre completo"
+                            ? "nombre-institucional" : editandoDatos && etiqueta === "DNI"
+                            ? "dni-institucional" : editandoDatos && etiqueta === "Correo asociado"
+                            ? "correo-institucional" : undefined}
+                          className="mb-2 block text-sm font-semibold text-slate-600"
+                        >
+                          {etiqueta}
+                        </label>
+                        {editandoDatos && etiqueta === "Nombre completo" ? (
+                          <input
+                            id="nombre-institucional"
+                            type="text"
+                            value={nombreEditado}
+                            onChange={(e) => setNombreEditado(e.target.value)}
+                            maxLength={150}
+                            required
+                            disabled={guardandoDatos}
+                            autoComplete="name"
+                            className={entrada}
+                          />
+                        ) : editandoDatos && etiqueta === "DNI" ? (
+                          <input
+                            id="dni-institucional"
+                            type="text"
+                            value={dniEditado}
+                            onChange={(e) => setDniEditado(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                            maxLength={8}
+                            minLength={8}
+                            inputMode="numeric"
+                            pattern="[0-9]{8}"
+                            required
+                            disabled={guardandoDatos}
+                            autoComplete="off"
+                            className={entrada}
+                          />
+                        ) : editandoDatos && etiqueta === "Correo asociado" ? (
+                          <input
+                            id="correo-institucional"
+                            type="email"
+                            value={correoEditado}
+                            onChange={(e) => setCorreoEditado(e.target.value)}
+                            maxLength={254}
+                            disabled={guardandoDatos}
+                            autoComplete="email"
+                            placeholder="correo@ejemplo.com"
+                            className={entrada}
+                          />
+                        ) : (
+                          <div className={caja}>{valor}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {editandoDatos && (
+                    <div className="mt-5 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="submit"
+                        disabled={guardandoDatos || nombreEditado.trim().length < 5 || !/^[0-9]{8}$/.test(dniEditado)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        <Save size={16} /> {guardandoDatos ? "Guardando..." : "Guardar datos"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={guardandoDatos}
+                        onClick={() => setEditandoDatos(false)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-50"
+                      >
+                        <X size={16} /> Cancelar
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                  {editandoDatos && (
+                    <p className="mt-2 text-right text-xs text-amber-700">
+                      Cambiar el correo requiere verificar la nueva dirección. La dirección actual se mantiene hasta entonces.
+                    </p>
+                  )}
+                </form>
               </div>
             </section>
-
             {/* CORREO DE RECUPERACIÓN */}
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -1003,7 +1131,6 @@ export default function ViewMiPerfil() {
                   <Mail size={21} className="text-emerald-600" />
                   Correo de recuperación
                 </h2>
-
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1020,6 +1147,20 @@ export default function ViewMiPerfil() {
                       : "Agregar correo electrónico"}
                   </button>
 
+                  {proveedor === "supabase" &&
+                    Boolean(estadoCorreo?.correo_pendiente ||
+                      (estadoCorreo?.correo_secundario && !estadoCorreo.verificado)) && (
+                    <button
+                      type="button"
+                      onClick={() => void reenviarVerificacion()}
+                      disabled={procesandoCorreo || actualizando}
+                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      <Send size={15} />
+                      {procesandoCorreo ? "Enviando..." : "Reenviar verificación"}
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => void actualizarEstado()}
@@ -1033,7 +1174,6 @@ export default function ViewMiPerfil() {
                   </button>
                 </div>
               </div>
-
               {vinculado ? (
                 <>
                   <div className={caja}>
@@ -1063,18 +1203,6 @@ export default function ViewMiPerfil() {
                   No tienes un correo de recuperación vinculado.
                 </p>
               )}
-
-              {proveedor === "supabase" &&
-                estadoCorreo?.correo_secundario && (
-                  <p className="mt-3 text-sm text-slate-700">
-                    Correo adicional:{" "}
-                    {estadoCorreo.correo_secundario} (
-                    {estadoCorreo.verificado
-                      ? "verificado"
-                      : "no verificado"})
-                  </p>
-                )}
-
               {mostrarAgregarCorreo && (
                 <form
                   onSubmit={agregarCorreo}
@@ -1086,7 +1214,6 @@ export default function ViewMiPerfil() {
                   >
                     Correo electrónico que deseas verificar
                   </label>
-
                   <input
                     id="correo-adicional"
                     type="email"
@@ -1103,7 +1230,6 @@ export default function ViewMiPerfil() {
                     placeholder="nombre@ejemplo.com"
                     className={entrada}
                   />
-
                   <button
                     type="submit"
                     disabled={
@@ -1119,7 +1245,6 @@ export default function ViewMiPerfil() {
                   </button>
                 </form>
               )}
-
               {proveedor === "clerk" &&
                 correoPendienteId && (
                   <form
@@ -1129,7 +1254,6 @@ export default function ViewMiPerfil() {
                     <p className="text-sm font-semibold text-emerald-800">
                       Verificar correo: {emailPendiente}
                     </p>
-
                     <input
                       value={codigoVerificacion}
                       onChange={(e) =>
@@ -1142,7 +1266,6 @@ export default function ViewMiPerfil() {
                       placeholder="Código recibido"
                       className={entrada}
                     />
-
                     <button
                       type="submit"
                       disabled={
@@ -1155,7 +1278,6 @@ export default function ViewMiPerfil() {
                     </button>
                   </form>
                 )}
-
               {proveedor === "supabase" &&
                 estadoCorreo?.correo_pendiente && (
                   <p className="mt-3 text-sm text-amber-700">
@@ -1164,14 +1286,7 @@ export default function ViewMiPerfil() {
                     Comprueba el enlace que recibas.
                   </p>
                 )}
-
-              <p className="mt-4 text-xs text-amber-700">
-                Verificar el correo demuestra su propiedad.
-                La recuperación de contraseñas depende de la
-                configuración del proveedor de autenticación.
-              </p>
             </section>
-
             {/* CAMBIAR CONTRASEÑA */}
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-800">
@@ -1181,11 +1296,9 @@ export default function ViewMiPerfil() {
                 />
                 Cambiar contraseña
               </h2>
-
               <p className="mb-5 text-sm text-slate-500">
                 Usa una contraseña de al menos 15 caracteres.
               </p>
-
               <form
                 onSubmit={cambiarContrasena}
                 className="max-w-lg space-y-4"
@@ -1211,7 +1324,6 @@ export default function ViewMiPerfil() {
                     <label className="mb-2 block text-sm font-semibold text-slate-600">
                       {campo.label}
                     </label>
-
                     <input
                       type={mostrar ? "text" : "password"}
                       value={campo.valor}
@@ -1229,11 +1341,9 @@ export default function ViewMiPerfil() {
                     />
                   </div>
                 ))}
-
                 <IndicadorSeguridadContrasena
                   contrasena={nueva}
                 />
-
                 {confirmar && (
                   <p className={`text-xs ${
                     nueva === confirmar
@@ -1245,7 +1355,6 @@ export default function ViewMiPerfil() {
                       : "Las contraseñas no coinciden."}
                   </p>
                 )}
-
                 <button
                   type="button"
                   onClick={() => setMostrar((v) => !v)}
@@ -1258,7 +1367,6 @@ export default function ViewMiPerfil() {
                     ? "Ocultar contraseñas"
                     : "Mostrar contraseñas"}
                 </button>
-
                 <button
                   type="submit"
                   disabled={
@@ -1279,7 +1387,6 @@ export default function ViewMiPerfil() {
                 </button>
               </form>
             </section>
-
             <p className="flex items-center gap-2 text-xs text-slate-500">
               <ShieldCheck
                 size={17}
