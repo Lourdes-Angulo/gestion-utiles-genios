@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 
 import { useApp } from "../context/AppContext";
+import { useConsultaAnual } from '../context/ConsultaAnualContext';
 import { useRolInstitucional } from "../lib/useRolInstitucional";
 
 import { ListaUtil } from "../types";
@@ -170,7 +171,9 @@ export default function ViewListasUtiles() {
 
     usuarioActivo,
 
-    configuracionColegio
+    configuracionColegio,
+    aniosEscolares,
+    matriculas
 
   } = useApp();
 
@@ -178,6 +181,13 @@ export default function ViewListasUtiles() {
 
   const { rol, nivelAsignado, aulaAsignada } = useRolInstitucional();
   const [filtroNivel, setFiltroNivel] = useState<"" | "Inicial" | "Primaria">("");
+  const { seleccionado, seleccionar } = useConsultaAnual();
+  const anioConsulta = String(seleccionado?.anio ?? configuracionColegio.anioEscolar ?? '');
+  const setFiltroAnio = (anio: string) => {
+    const periodo = aniosEscolares.find(a => String(a.anio) === anio);
+    if (periodo) seleccionar(periodo.id);
+  };
+  const periodoCerrado = aniosEscolares.some(a => String(a.anio) === anioConsulta && a.estado === 'Cerrado');
 
   const [listaSeleccionada, setListaSeleccionada] = useState<ListaUtil | null>(listas[0] || null);
 
@@ -186,13 +196,14 @@ export default function ViewListasUtiles() {
   // Siempre presentar la versión actualizada desde AppContext, no una copia antigua.
   useEffect(() => {
     const disponibles = listas.filter(l =>
+      (!aniosEscolares.length || l.anioEscolar === anioConsulta) &&
       (rol !== "Profesora" || (l.nivel === nivelAsignado && l.grado === aulaAsignada)) &&
       (rol !== "Auxiliar" || l.nivel === nivelAsignado));
     setListaSeleccionada(anterior => {
       const actual = disponibles.find(l => l.id === anterior?.id);
       return actual ?? disponibles[0] ?? null;
     });
-  }, [listas, rol, nivelAsignado, aulaAsignada]);
+  }, [listas, rol, nivelAsignado, aulaAsignada, anioConsulta, aniosEscolares]);
 
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
   const [editandoListaId, setEditandoListaId] = useState<string | null>(null);
@@ -211,7 +222,7 @@ export default function ViewListasUtiles() {
 
 
 
-  const puedeGestionar = ["Administrador", "Secretaria", "Profesora"].includes(rol ?? "");
+  const puedeGestionar = !periodoCerrado && ["Administrador", "Secretaria", "Profesora"].includes(rol ?? "");
   const esAdmin = rol === "Administrador";
 
 
@@ -223,7 +234,7 @@ export default function ViewListasUtiles() {
 
     setFormGrado(rol === "Profesora" ? (aulaAsignada || "3 años") : "1er Grado");
 
-    setFormAnio(configuracionColegio.anioEscolar);
+    setFormAnio(anioConsulta);
 
     const existente = rol === "Profesora"
       ? listas.find(l => l.anioEscolar === configuracionColegio.anioEscolar && l.nivel === nivelAsignado && l.grado === aulaAsignada)
@@ -349,6 +360,7 @@ export default function ViewListasUtiles() {
   // Get total students enrolled in this selected grade
   const getAlumnosEnGrado = (grado: string) => {
 
+    if (aniosEscolares.length) return matriculas.filter(m => m.grado === grado && m.anio_id === aniosEscolares.find(a => String(a.anio) === anioConsulta)?.id).length;
     return estudiantes.filter(e => e.grado === grado && e.estado === "Activo").length;
 
   };
@@ -356,6 +368,7 @@ export default function ViewListasUtiles() {
 
 
   const listasFiltradas = listas.filter(l =>
+    (!aniosEscolares.length || l.anioEscolar === anioConsulta) &&
     (filtroNivel === "" || l.nivel === filtroNivel) &&
     (rol !== "Profesora" || (l.nivel === nivelAsignado && l.grado === aulaAsignada)) &&
     (rol !== "Auxiliar" || l.nivel === nivelAsignado)
@@ -393,7 +406,8 @@ export default function ViewListasUtiles() {
 
           <div>
 
-            <h4 className="font-bold text-slate-800 text-sm">Año Escolar de Gestión: {configuracionColegio.anioEscolar}</h4>
+            <h4 className="font-bold text-slate-800 text-sm">Año Escolar de Gestión: {anioConsulta}</h4>
+            {aniosEscolares.length > 0 && <select aria-label="Año de las listas" value={anioConsulta} onChange={e => setFiltroAnio(e.target.value)} className="mt-2 rounded-xl border p-2 text-sm">{aniosEscolares.map(a => <option key={a.id} value={a.anio}>{a.anio} · {a.estado}</option>)}</select>}
 
             <p className="text-[11px] text-slate-400 mt-0.5">Listas vigentes y cantidades estimadas por alumno matriculado</p>
 
@@ -447,7 +461,7 @@ export default function ViewListasUtiles() {
 
             listasFiltradas.map((lista) => {
 
-              const isSelected = listaSeleccionada?.id === lista.id || (listaSeleccionada?.grado === lista.grado && listaSeleccionada?.nivel === lista.nivel);
+              const isSelected = listaSeleccionada?.id === lista.id;
 
               const totalItems = lista.items.reduce((sum, it) => sum + it.cantidadRequerida, 0);
 

@@ -53,11 +53,15 @@ export default function ViewRecepcion({
 
     configuracionColegio,
 
-    estudiantes,
+    estudiantes: todosEstudiantes,
+    matriculas,
+    aniosEscolares,
 
     listas
 
   } = useApp();
+  const activo = aniosEscolares.find(a => a.estado === 'Activo');
+  const estudiantes = aniosEscolares.length ? todosEstudiantes.filter(e => matriculas.some(m => m.anio_id === activo?.id && m.estudiante_id === e.id)) : todosEstudiantes;
 
 
 

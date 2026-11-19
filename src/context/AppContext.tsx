@@ -11,7 +11,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RolSIGUE } from "../lib/permisosRoles";
 
 import { INITIAL_USERS } from "../data/mockData";
+import type { AnioEscolar, Matricula, EvaluacionStock } from '../lib/aniosEscolares';
+import { operarAnio } from '../lib/aniosEscolares';
+import { ConsultaAnualProvider } from './ConsultaAnualContext';
 interface AppContextType {
+  rolSesion: RolSIGUE | null;
+  cliente: SupabaseClient;
+  aniosEscolares: AnioEscolar[];
+  matriculas: Matricula[];
+  recargarDatos: () => void;
 
   estudiantes: Estudiante[];
 
@@ -50,7 +58,7 @@ interface AppContextType {
   registrarEntregaRecepcion: (recepId: string, entregados: { [utilId: string]: number }, observaciones: string, recibidoPor: string, entregadoPor?: string) => Promise<void>;
 
   registrarNuevaRecepcion: (recep: Omit<Recepcion, "id">) => Promise<Recepcion | null>;
-  registrarNuevoMovimiento: (mov: Omit<Movimiento, "id" | "fecha">) => void;
+  registrarNuevoMovimiento: (mov: Omit<Movimiento, "id" | "fecha">) => Promise<void>;
 
   resolverAlerta: (alertaId: string) => void;
 
@@ -77,6 +85,10 @@ const HABILITAR_RECONCILIACION_AUTOMATICA = false;
 
 export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, rolUsuario }: { children: ReactNode; cliente?: SupabaseClient; habilitado?: boolean; idUsuario?: string | null; rolUsuario?: RolSIGUE | null }) => {
   const supabase = cliente ?? supabaseOriginal;
+  const [revision, setRevision] = useState(0);
+  const [aniosEscolares, setAniosEscolares] = useState<AnioEscolar[]>([]);
+  const [errorPeriodos, setErrorPeriodos] = useState('');
+  const [matriculas, setMatriculas] = useState<Matricula[]>([]);
 
   const [estudiantes, setEstudiantes] = useState<Estudiante[]>([]);
 
@@ -148,6 +160,9 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
   // Al iniciar la app, carga los datos desde Supabase (base de datos real)
 
   useEffect(() => {
+    if (!habilitado) {
+    setAniosEscolares([]);
+    setMatriculas([]);
     setEstudiantes([]);
     setUsuarios([]);
     setListas([]);
@@ -156,12 +171,34 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
     setMovimientos([]);
     setAlertas([]);
     setDatosListos(false);
-    if (!habilitado) return;
+    return;
+    }
+    let vigente = true;
     const cargarDatos = async () => {
+      const { data: periodos, error: errorPeriodos } = await supabase.from('anios_escolares').select('*').order('anio', { ascending: false });
+      if (!vigente) return;
+      setErrorPeriodos(errorPeriodos
+        ? ['42P01', 'PGRST205'].includes(errorPeriodos.code)
+          ? 'Consulta anual pendiente. Falta aplicar las migraciones de años escolares.'
+          : `No se pudieron consultar los años escolares. ${errorPeriodos.message}`
+        : '');
+      if (errorPeriodos) setAniosEscolares([]);
+      if (errorPeriodos && !['42P01','PGRST205'].includes(errorPeriodos.code)) {
+        console.error('No se pudieron validar los períodos escolares:', errorPeriodos.message);
+        return;
+      }
+      const activo = (periodos as AnioEscolar[] | null)?.find(a => a.estado === 'Activo');
+      const { data: inscripciones } = errorPeriodos ? { data: null } : await supabase.from('matriculas').select('*');
+      const { data: evaluacionesStock } = activo ? await supabase.from('evaluaciones_stock').select('*').eq('anio_id', activo.id) : { data: null };
+      if (!vigente) return;
+      setAniosEscolares((periodos ?? []) as AnioEscolar[]);
+      setMatriculas((inscripciones ?? []) as Matricula[]);
+      if (!errorPeriodos && periodos?.length) setConfiguracionColegio(prev => ({ ...prev, anioEscolar: activo ? String(activo.anio) : '' }));
 
       // Útiles
 
       const { data: utilesData, error: utilesError } = await supabase.from("utiles").select("*").order("id");
+      if (!vigente) return;
 
       if (utilesError) {
 
@@ -169,12 +206,16 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
 
       } else if (utilesData) {
 
-        setUtiles(utilesData as UtilEscolar[]);
+        setUtiles(utilesData.map(u => {
+          const evaluacion = (evaluacionesStock as EvaluacionStock[] | null)?.find(e => e.util_id === u.id);
+          return { ...u, stockDisponible: evaluacion?.bueno ?? u.stockActual, stockComprometido: evaluacion?.comprometido ?? 0, stockNoApto: evaluacion ? evaluacion.deteriorado + evaluacion.vencido + evaluacion.inutilizable : 0 };
+        }) as UtilEscolar[]);
 
       }
       // Estudiantes
 
       const { data: estudiantesData, error: estudiantesError } = await supabase.from("estudiantes").select("*").order("id");
+      if (!vigente) return;
 
       if (estudiantesError) {
 
@@ -188,6 +229,7 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
       // Usuarios (perfiles: nombre, rol, permisos)
 
       const { data: usuariosData, error: usuariosError } = await supabase.from("usuarios").select("*").order("id");
+      if (!vigente) return;
 
       if (usuariosError) {
 
@@ -201,6 +243,7 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
       // Listas de útiles
 
       const { data: listasData, error: listasError } = await supabase.from("listas_utiles").select("*").order("id");
+      if (!vigente) return;
 
       if (listasError) {
 
@@ -214,6 +257,7 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
       // Movimientos (ordenados por fecha, más reciente primero)
 
       const { data: movimientosData, error: movimientosError } = await supabase.from("movimientos").select("*").order("fecha", { ascending: false });
+      if (!vigente) return;
 
       if (movimientosError) {
 
@@ -221,12 +265,13 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
 
       } else if (movimientosData) {
 
-        setMovimientos(movimientosData as Movimiento[]);
+        setMovimientos((periodos?.length ? movimientosData.filter(m => m.anio_id === activo?.id) : movimientosData) as Movimiento[]);
 
       }
       // Alertas
 
       const { data: alertasData, error: alertasError } = await supabase.from("alertas").select("*").order("id", { ascending: false });
+      if (!vigente) return;
 
       if (alertasError) {
 
@@ -240,6 +285,7 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
       // Recepciones
 
       const { data: recepcionesData, error: recepcionesError } = await supabase.from("recepciones").select("*").order("id");
+      if (!vigente) return;
 
       if (recepcionesError) {
 
@@ -247,7 +293,7 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
 
       } else if (recepcionesData) {
 
-        setRecepciones(recepcionesData as Recepcion[]);
+        setRecepciones((periodos?.length ? recepcionesData.filter(r => r.anio_id === activo?.id) : recepcionesData) as Recepcion[]);
 
       }
       // Todos los datos cargados: habilita el recálculo automático de alertas
@@ -257,8 +303,8 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
     };
 
     cargarDatos();
-
-  }, []);
+    return () => { vigente = false; };
+  }, [supabase, habilitado, idUsuario, rolUsuario, revision]);
   // Recalcula las alertas automáticamente según el stock real
 
   const reconciliarAlertas = async () => {
@@ -572,7 +618,7 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
       nombre: util.nombre, categoria: util.categoria,
       unidadMedida: util.unidadMedida, ubicación: util.ubicación,
       stockMinimo: util.stockMinimo
-    } : util;
+    } : Object.fromEntries(Object.entries(util).filter(([campo]) => !['stockDisponible','stockComprometido','stockNoApto'].includes(campo)));
     const { data: utilActualizado, error } = await supabase.from("utiles").update(cambios).eq("id", util.id).select("*").maybeSingle();
 
     if (error) {
@@ -665,7 +711,7 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
   ): Promise<void> => {
     const anterior = recepciones.find(r => r.id === recepId);
     if (!anterior) throw new Error("La recepción ya no está disponible. Actualiza la página.");
-    const { data, error } = await supabase.rpc("sigue_guardar_recepcion", {
+    const { data, error } = await supabase.rpc(aniosEscolares.length ? "sigue_guardar_recepcion_anual" : "sigue_guardar_recepcion", {
       p_estudiante_id: anterior.estudianteId,
       p_cantidades: entregados,
       p_observaciones: observaciones,
@@ -677,10 +723,11 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
     setRecepciones(prev => prev.map(r => r.id === recepId ? data as Recepcion : r));
     const { data: productos, error: errorProductos } = await supabase.from("utiles").select("*");
     if (!errorProductos && productos) setUtiles(productos as UtilEscolar[]);
+    if (aniosEscolares.length) setRevision(v => v + 1);
   };
   const registrarNuevaRecepcion = async (recep: Omit<Recepcion, "id">): Promise<Recepcion | null> => {
     const cantidades = Object.fromEntries(recep.items.map(it => [it.utilId, it.cantidadEntregada]));
-    const { data, error } = await supabase.rpc("sigue_guardar_recepcion", {
+    const { data, error } = await supabase.rpc(aniosEscolares.length ? "sigue_guardar_recepcion_anual" : "sigue_guardar_recepcion", {
       p_estudiante_id: recep.estudianteId,
       p_cantidades: cantidades,
       p_observaciones: recep.observaciones || "",
@@ -693,9 +740,17 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
     setRecepciones(prev => [creada, ...prev]);
     const { data: productos, error: errorProductos } = await supabase.from("utiles").select("*");
     if (!errorProductos && productos) setUtiles(productos as UtilEscolar[]);
+    if (aniosEscolares.length) setRevision(v => v + 1);
     return creada;
   };
   const registrarNuevoMovimiento = async (mov: Omit<Movimiento, "id" | "fecha">) => {
+    if (aniosEscolares.length) {
+      const activo = aniosEscolares.find(a => a.estado === 'Activo');
+      if (!activo) throw new Error('Active un año escolar antes de registrar movimientos.');
+      await operarAnio(supabase, 'movimiento', { anio_id: activo.id, util_id: mov.utilId, tipo: mov.tipo, cantidad: mov.cantidad, motivo: mov.motivo });
+      setRevision(v => v + 1);
+      return;
+    }
 
     const hoyStr = new Date().toISOString().split("T")[0];
 
@@ -790,11 +845,25 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
     setConfiguracionColegio(prev => ({ ...prev, ...config }));
 
   };
+  const alertasActuales = aniosEscolares.length ? [
+    ...alertas.filter(a => a.resuelta || !['stock_bajo','proximo_agotarse'].includes(a.tipo)),
+    ...utiles.filter(u => u.estado === 'Activo' && (u.stockDisponible ?? u.stockActual) <= u.stockMinimo).map((u): Alerta => {
+      const disponible = u.stockDisponible ?? u.stockActual;
+      return { id: `stock:${u.id}`, tipo: 'stock_bajo', prioridad: disponible === 0 ? 'Alta' : 'Media',
+        fecha: new Date().toISOString().slice(0,10), utilId: u.id, utilNombre: u.nombre,
+        descripcion: `${disponible} unidades aptas disponibles. Stock mínimo ${u.stockMinimo}.`,
+        accionRecomendada: `Reponer ${Math.max(1,u.stockMinimo-disponible)} unidades aptas.`, resuelta: false };
+    }),
+  ] : alertas;
   return (
 
     <AppContext.Provider
 
       value={{
+        cliente: supabase,
+        aniosEscolares,
+        matriculas,
+        recargarDatos: () => setRevision(v => v + 1),
 
         estudiantes,
 
@@ -808,10 +877,11 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
 
         predicciones,
 
-        alertas,
+        alertas: alertasActuales,
 
         usuarios,
 
+        rolSesion: habilitado ? rolUsuario ?? null : null,
         usuarioActivo,
 
         cambiarUsuarioActivo,
@@ -844,7 +914,9 @@ export const AppProvider = ({ children, cliente, habilitado = false, idUsuario, 
 
     >
 
-      {children}
+      <ConsultaAnualProvider anios={aniosEscolares} rol={habilitado ? rolUsuario ?? null : null} errorPeriodos={errorPeriodos}>
+        {children}
+      </ConsultaAnualProvider>
 
     </AppContext.Provider>
 

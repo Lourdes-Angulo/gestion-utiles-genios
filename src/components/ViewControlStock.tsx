@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from "react";
+import BajaInventario from './BajaInventario';
 import { useApp } from "../context/AppContext";
 import { Filter, Search, Package, AlertTriangle, Check, ArrowDown, ArrowUp } from "lucide-react";
 
@@ -40,12 +41,13 @@ export default function ViewControlStock() {
   };
 
   const utilesProcesados = utiles.map(ut => {
+    const disponible = ut.stockDisponible ?? ut.stockActual;
     const { stockInicial, entradas, salidas } = getMetricasStock(ut.id, ut.stockActual);
     
     let estado: "Normal" | "Bajo" | "Sin stock" = "Normal";
-    if (ut.stockActual === 0) {
+    if (disponible === 0) {
       estado = "Sin stock";
-    } else if (ut.stockActual <= ut.stockMinimo) {
+    } else if (disponible <= ut.stockMinimo) {
       estado = "Bajo";
     }
 
@@ -85,6 +87,8 @@ export default function ViewControlStock() {
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
+      <BajaInventario />
+      <div className="rounded-xl border bg-white p-4 text-sm text-slate-700">Disponibles {utiles.reduce((n, u) => n + (u.stockDisponible ?? u.stockActual), 0)} · Comprometidos {utiles.reduce((n, u) => n + (u.stockComprometido ?? 0), 0)} · No aptos evaluados {utiles.reduce((n, u) => n + (u.stockNoApto ?? 0), 0)}</div>
       
       {/* Metrics Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -203,6 +207,9 @@ export default function ViewControlStock() {
                 <th className="p-5 text-center">Salidas (-)</th>
                 <th className="p-5 text-center">Stock Mínimo</th>
                 <th className="p-5 text-center">Stock Actual</th>
+                <th className="p-5 text-center">Disponible apto</th>
+                <th className="p-5 text-center">Comprometido</th>
+                <th className="p-5 text-center">No apto evaluado</th>
                 <th className="p-5 pr-8 text-center">Criticidad</th>
               </tr>
             </thead>
@@ -242,6 +249,9 @@ export default function ViewControlStock() {
                     }`}>
                       {ut.stockActual}
                     </td>
+                    <td className="p-5 text-center">{ut.stockDisponible ?? ut.stockActual}</td>
+                    <td className="p-5 text-center">{ut.stockComprometido ?? 0}</td>
+                    <td className="p-5 text-center">{ut.stockNoApto ?? 0}</td>
                     <td className="p-5 pr-8 text-center">
                       <span className={`inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase ${
                         ut.estadoStock === "Sin stock"
@@ -260,7 +270,7 @@ export default function ViewControlStock() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
+                  <td colSpan={11} className="p-8 text-center text-slate-400 font-bold">
                     No se encontraron productos con los criterios de filtrado seleccionados.
                   </td>
                 </tr>

@@ -80,8 +80,10 @@ export default function ViewMovimientos() {
     setFormMotivo(tipo === "Entrada" ? "Reabastecimiento directo" : "Uso en Aula");
   };
 
-  const handleGuardar = (e: React.FormEvent) => {
+  const [guardando, setGuardando] = useState(false);
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (guardando) return;
     if (formCantidad <= 0) return;
 
     const utilObj = utiles.find(u => u.id === formUtilId);
@@ -113,7 +115,9 @@ export default function ViewMovimientos() {
       finalMotivo = `Material educativo - ${formNombreManualidad.trim()}`;
     }
 
-    registrarNuevoMovimiento({
+    setGuardando(true);
+    try {
+    await registrarNuevoMovimiento({
       tipo: formTipo,
       utilId: formUtilId,
       utilNombre: utilObj.nombre,
@@ -127,6 +131,9 @@ export default function ViewMovimientos() {
     setMostrarModalRegistro(false);
     setMensajeExito("Movimiento de inventario consolidado y registrado.");
     setTimeout(() => setMensajeExito(""), 4000);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No se pudo guardar el movimiento.');
+    } finally { setGuardando(false); }
   };
 
   const filtrarPorGrado = filtroGrado !== "";

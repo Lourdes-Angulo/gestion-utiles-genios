@@ -201,6 +201,15 @@ export default function ViewAuditoria() {
 
       const resultado = ((actividades ?? []) as RegistroBD[])
         .map((registro) => transformarRegistro(registro, nombresAuth, nombresInstitucionales));
+      const { data: eventosAnuales, error: errorAnual } = await supabase.from('eventos_anios')
+        .select('id,tabla,registro_id,accion,responsable,fecha').order('fecha', { ascending: false }).limit(100);
+      if (errorAnual && !['42P01','PGRST205'].includes(errorAnual.code)) throw new Error(errorAnual.message);
+      for (const evento of eventosAnuales ?? []) {
+        resultado.push({ id: evento.id, usuario: nombresInstitucionales.get(evento.responsable) ?? evento.responsable,
+          accion: evento.accion === 'INSERT' ? 'Creación' : evento.accion === 'UPDATE' ? 'Modificación' : 'Eliminación',
+          modulo: 'Años escolares', descripcion: `${evento.tabla} · ${evento.registro_id}`, fecha: evento.fecha });
+      }
+      resultado.sort((a, b) => b.fecha.localeCompare(a.fecha));
 
       setRegistros(resultado);
     } catch (err) {
