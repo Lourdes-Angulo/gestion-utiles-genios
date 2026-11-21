@@ -75,9 +75,10 @@ export default function ViewPrediccion() {
       meses.push({ key, label: NOMBRES_MES[d.getMonth()] });
     }
 
-    return utiles.map((util) => {
+    return utiles.map((producto) => {
+      const util = { ...producto, stockActual: producto.stockDisponible ?? producto.stockActual };
       // Salidas (consumo) de este útil
-      const salidas = movimientos.filter(m => m.utilId === util.id && m.tipo === "Salida");
+      const salidas = movimientos.filter(m => m.utilId === util.id && m.tipo === "Salida" && !m.motivo.startsWith('Cierre anual') && !m.motivo.startsWith('Baja de inventario'));
       const porMes: { [key: string]: number } = {};
       salidas.forEach(m => {
         const key = (m.fecha || "").substring(0, 7); // "YYYY-MM"

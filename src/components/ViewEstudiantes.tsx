@@ -1,6 +1,7 @@
 
 
 import React, { useState, useRef } from "react";
+import ViewAniosEscolares from './ViewAniosEscolares';
 
 import { useApp } from "../context/AppContext";
 
@@ -64,6 +65,7 @@ function ProgresoUtilesAlumno({
 
 
 
+  const { aniosEscolares, configuracionColegio } = useApp();
   const lista = listas
 
     .filter(
@@ -71,6 +73,7 @@ function ProgresoUtilesAlumno({
       (l) =>
 
         l.nivel === estudiante.nivel &&
+        (!aniosEscolares.length || l.anioEscolar === configuracionColegio.anioEscolar) &&
 
         l.grado === estudiante.grado
 
@@ -347,6 +350,8 @@ export default function ViewEstudiantes({
   const {
 
     estudiantes,
+    matriculas,
+    aniosEscolares,
 
     listas,
 
@@ -446,7 +451,7 @@ export default function ViewEstudiantes({
 
 
 
-  const rol = perfil?.rol;
+  const rol: Rol | undefined = perfil?.rol as Rol | undefined;
 
   const esPersonal =
 
@@ -892,7 +897,12 @@ export default function ViewEstudiantes({
 
 
 
-  const estudiantesFiltrados = estudiantes.filter((est) => {
+  const activo = aniosEscolares.find(a => a.estado === 'Activo');
+  const estudiantesDelPeriodo = activo ? estudiantes.flatMap(est => {
+    const matricula = matriculas.find(m => m.anio_id === activo.id && m.estudiante_id === est.id);
+    return matricula ? [{ ...est, nivel: matricula.nivel, grado: matricula.grado }] : [];
+  }) : estudiantes;
+  const estudiantesFiltrados = estudiantesDelPeriodo.filter((est) => {
 
     const texto = [
 
@@ -927,6 +937,7 @@ export default function ViewEstudiantes({
   return (
 
     <div className="flex-1 space-y-6 overflow-y-auto bg-[#f0f4f8] p-5 md:p-8">
+      {(rol === 'Administrador' || rol === 'Secretaria') && <details className="rounded-2xl border bg-white p-4"><summary className="cursor-pointer font-semibold text-emerald-800">Preparar matrículas y revisar continuidad</summary><ViewAniosEscolares soloPreparacion={rol === 'Secretaria'} /></details>}
 
 
 

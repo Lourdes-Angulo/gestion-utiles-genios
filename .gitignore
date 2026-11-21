@@ -26,3 +26,5 @@ yarn-error.log*
 
 # AI Studio
 .aistudio/
+
+supabase/.temp/

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 
 import { useApp } from "./demoContext";
 import { useRolInstitucional } from "./demoContext";
@@ -27,7 +28,16 @@ import {
 
   AlertTriangle,
 
-  Info
+  Info,
+  BookOpen,
+  FileText,
+  Ruler,
+  Scissors,
+  Pencil,
+  MapPin,
+  ImagePlus,
+  Camera,
+  RotateCcw
 
 } from "lucide-react";
 
@@ -77,9 +87,54 @@ export default function ViewUtiles() {
 
   const [formStockMinimo, setFormStockMinimo] = useState(10);
   const [guardandoUtil, setGuardandoUtil] = useState(false);
+  const [ofrecerGuardarSinFoto, setOfrecerGuardarSinFoto] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState("");
 
   const [formUbicacion, setFormUbicacion] = useState("");
+  const [formImagen, setFormImagen] = useState<string | null>(null);
+  const [archivoImagen, setArchivoImagen] = useState<File | null>(null);
+  const [imagenPrevia, setImagenPrevia] = useState<string | null>(null);
+
+  const seleccionarImagen = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) {
+      setErrorGuardado('Solo se permiten imágenes JPG, PNG o WEBP.');
+      e.target.value = '';
+      return;
+    }
+    if (archivo.size > 2 * 1024 * 1024) {
+      setErrorGuardado('La imagen no puede superar 2 MB.');
+      e.target.value = '';
+      return;
+    }
+    if (imagenPrevia?.startsWith('blob:')) URL.revokeObjectURL(imagenPrevia);
+    setArchivoImagen(archivo);
+    setImagenPrevia(URL.createObjectURL(archivo));
+    setErrorGuardado('');
+    setOfrecerGuardarSinFoto(false);
+    e.target.value = '';
+  };
+
+  const quitarImagen = () => {
+    if (imagenPrevia?.startsWith('blob:')) URL.revokeObjectURL(imagenPrevia);
+    setArchivoImagen(null);
+    setImagenPrevia(null);
+    setFormImagen(null);
+    setOfrecerGuardarSinFoto(false);
+  };
+
+  const subirImagen = async (): Promise<string | null> => {
+    if (!archivoImagen) return formImagen;
+    const extension = archivoImagen.type === 'image/png' ? 'png' : archivoImagen.type === 'image/webp' ? 'webp' : 'jpg';
+    const ruta = `${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from('utiles-imagenes').upload(ruta, archivoImagen, {
+      contentType: archivoImagen.type,
+      upsert: false,
+    });
+    if (error) throw new Error('No se pudo subir la imagen: ' + error.message + '. Revisa las políticas RLS del bucket utiles-imagenes y que tu sesión tenga un usuario institucional activo.');
+    return supabase.storage.from('utiles-imagenes').getPublicUrl(ruta).data.publicUrl;
+  };
 
 
 
@@ -117,6 +172,10 @@ export default function ViewUtiles() {
     setFormStockMinimo(10);
 
     setFormUbicacion("");
+    setArchivoImagen(null);
+    setImagenPrevia(null);
+    setFormImagen(null);
+    setOfrecerGuardarSinFoto(false);
 
     setMostrarModalRegistro(true);
 
@@ -142,6 +201,10 @@ export default function ViewUtiles() {
     setFormStockMinimo(ut.stockMinimo);
 
     setFormUbicacion(ut.ubicación);
+    setArchivoImagen(null);
+    setImagenPrevia(null);
+    setOfrecerGuardarSinFoto(false);
+    setFormImagen(ut.imagen_url ?? null);
 
     setMostrarModalRegistro(true);
 
@@ -159,7 +222,7 @@ export default function ViewUtiles() {
 
 
 
-  const handleGuardar = async (e: React.FormEvent) => {
+  const handleGuardar = async (e: React.SyntheticEvent, omitirFoto = false) => {
     e.preventDefault();
     if (!puedeGestionar || guardandoUtil || !formNombre.trim()) return;
     if (!Number.isSafeInteger(formStockMinimo) || formStockMinimo < 0) {
@@ -170,6 +233,13 @@ export default function ViewUtiles() {
     setErrorGuardado("");
     setMensajeExito("");
     try {
+      let imagenGuardada: string | null;
+      try {
+        imagenGuardada = omitirFoto ? formImagen : await subirImagen();
+      } catch (error) {
+        setOfrecerGuardarSinFoto(true);
+        throw error;
+      }
       if (esEdicion && utilSeleccionado) {
         await editarUtil({
           ...utilSeleccionado,
@@ -179,8 +249,9 @@ export default function ViewUtiles() {
           stockActual: esAdmin ? formStockActual : utilSeleccionado.stockActual,
           stockMinimo: formStockMinimo,
           ubicación: formUbicacion,
+          imagen_url: imagenGuardada,
         });
-        setMensajeExito("Útil escolar modificado correctamente en Supabase.");
+        setMensajeExito(omitirFoto ? "Cambios guardados SIN subir la fotografía nueva." : "Útil escolar modificado correctamente en Supabase.");
       } else {
         await registrarUtil({
           codigo: "", // AppContext asigna un código único, no basado en registros visibles.
@@ -190,9 +261,10 @@ export default function ViewUtiles() {
           stockActual: esAdmin ? formStockActual : 0,
           stockMinimo: formStockMinimo,
           ubicación: formUbicacion,
+          imagen_url: imagenGuardada,
           estado: "Activo",
         });
-        setMensajeExito("Útil escolar registrado correctamente en Supabase.");
+        setMensajeExito(omitirFoto ? "Útil registrado SIN subir la fotografía." : "Útil escolar registrado correctamente en Supabase.");
       }
       setMostrarModalRegistro(false);
     } catch (error) {
@@ -364,253 +436,59 @@ export default function ViewUtiles() {
 
 
 
-      {/* Catalog Grid */}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-
+      {/* Catálogo compacto y adaptable */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {utilesFiltrados.length > 0 ? (
-
           utilesFiltrados.map((ut) => {
-
-            const esStockBajo = ut.stockActual <= ut.stockMinimo && ut.stockActual > 0;
-
             const esSinStock = ut.stockActual === 0;
-
-
+            const esStockBajo = ut.stockActual > 0 && ut.stockActual <= ut.stockMinimo;
+            const categoria = ut.categoria.toLowerCase();
+            const Icono = categoria.includes("cuaderno") ? BookOpen
+              : categoria.includes("papel") ? FileText
+              : ut.nombre.toLowerCase().includes("regla") ? Ruler
+              : ut.nombre.toLowerCase().includes("tijera") ? Scissors
+              : Pencil;
 
             return (
-
-              <div
-
-                key={ut.id}
-
-                className={`glass-card p-6 flex flex-col justify-between ${esSinStock
-
-                  ? "border-l-4 border-l-rose-500"
-
-                  : esStockBajo
-
-                    ? "border-l-4 border-l-amber-500"
-
-                    : "border-l-4 border-l-emerald-500"
-
-                  }`}
-
-              >
-
-                <div>
-
-                  <div className="flex items-start justify-between border-b border-slate-100 pb-3.5 mb-3.5">
-
-                    <div>
-
-                      <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded uppercase">
-
-                        {ut.categoria}
-
-                      </span>
-
-                      <h4 className="font-bold text-slate-800 text-xs mt-1.5 line-clamp-2" title={ut.nombre}>
-
-                        {ut.nombre}
-
-                      </h4>
-
-                    </div>
-
-                    <span className="text-[10px] font-mono font-bold text-slate-400">
-
-                      {ut.codigo}
-
-                    </span>
-
+              <article key={ut.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow min-w-0">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-16 h-16 shrink-0 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center overflow-hidden">
+                    {ut.imagen_url ? <img src={ut.imagen_url} alt={`Imagen de ${ut.nombre}`} className="w-full h-full object-cover" loading="lazy" /> : <Icono className="w-7 h-7" aria-label="Ilustración de referencia" />}
                   </div>
-
-
-
-                  {/* Stock meter */}
-
-                  <div className="space-y-2 text-xs font-semibold">
-
-                    <div className="flex items-center justify-between">
-
-                      <span className="text-slate-400">Stock Actual:</span>
-
-                      <span className={`text-sm font-black ${esSinStock ? "text-rose-600" : esStockBajo ? "text-amber-500" : "text-emerald-600"
-
-                        }`}>
-
-                        {ut.stockActual} {ut.unidadMedida}(s)
-
+                  <div className="min-w-0 flex-1">
+                    <div className="flex gap-2 items-start justify-between">
+                      <h4 className="text-sm font-bold text-slate-900 truncate" title={ut.nombre}>{ut.nombre}</h4>
+                      <span className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold ${esSinStock ? "bg-rose-100 text-rose-700" : esStockBajo ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"}`}>
+                        {esSinStock ? "Sin stock" : esStockBajo ? "Stock bajo" : "Disponible"}
                       </span>
-
                     </div>
-
-
-
-                    {/* Stock level indicators */}
-
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-
-                      <div
-
-                        className={`h-full rounded-full ${esSinStock ? "bg-rose-500" : esStockBajo ? "bg-amber-500" : "bg-emerald-500"
-
-                          }`}
-
-                        style={{ width: `${Math.min((ut.stockActual / Math.max(ut.stockMinimo * 2.5, 1)) * 100, 100)}%` }}
-
-                      />
-
-                    </div>
-
-
-
-                    <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-1">
-
-                      <span>Mínimo: {ut.stockMinimo}</span>
-
-                      <span className="flex items-center gap-1">
-
-                        Ubicación: <strong className="text-slate-700">{ut.ubicación || "-"}</strong>
-
-                      </span>
-
-                    </div>
-
+                    <p className="text-[11px] text-slate-500 truncate" title={`${ut.categoria} · ${ut.codigo}`}>
+                      {ut.categoria} · {ut.codigo}
+                    </p>
+                    <p className="text-xs mt-3 text-slate-700">
+                      <span className="font-bold">Mínimo para alertas:</span> {ut.stockMinimo} {ut.unidadMedida}(s)
+                    </p>
                   </div>
-
                 </div>
-
-
-
-                {/* Status Badges & Action Buttons */}
-
-                <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-5">
-
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${esSinStock
-
-                    ? "bg-rose-50 text-rose-700 border border-rose-100"
-
-                    : esStockBajo
-
-                      ? "bg-amber-50 text-amber-700 border border-amber-100"
-
-                      : "bg-emerald-50 text-emerald-700 border border-emerald-100"
-
-                    }`}>
-
-                    {esSinStock ? (
-
-                      <>
-
-                        <AlertTriangle className="w-3.5 h-3.5" />
-
-                        Sin Stock
-
-                      </>
-
-                    ) : esStockBajo ? (
-
-                      <>
-
-                        <AlertTriangle className="w-3.5 h-3.5" />
-
-                        Stock Bajo
-
-                      </>
-
-                    ) : (
-
-                      <>
-
-                        <Check className="w-3.5 h-3.5" />
-
-                        Disponible
-
-                      </>
-
-                    )}
-
+                <div className="border-t border-slate-100 mt-3 pt-2 flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1 text-xs text-slate-600 min-w-0" title={ut.ubicación || "Sin ubicación"}>
+                    <MapPin className="w-4 h-4 shrink-0" /><span className="truncate">{ut.ubicación || "Sin ubicación"}</span>
                   </span>
-
-
-
-                  <div className="flex items-center gap-1">
-
-                    <button
-
-                      onClick={() => handleVerDetalle(ut)}
-
-                      className="p-2 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-100"
-
-                    >
-
-                      <Eye className="w-4 h-4" />
-
-                    </button>
-
-                                        {puedeEditar && (
-                      <>
-
-                        <button
-
-                          onClick={() => handleAbrirEdicion(ut)}
-
-                          className="p-2 text-slate-400 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"
-
-                        >
-
-                          <Edit2 className="w-4 h-4" />
-
-                        </button>
-
-                                                  {esAdmin && <button
-
-                            onClick={() => desactivarUtil(ut.id)}
-
-                          className={`p-2 rounded-lg transition-colors border border-transparent ${ut.estado === "Activo"
-
-                              ? "text-slate-400 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-100"
-
-                              : "text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-100"
-
-                            }`}
-
-                          title={ut.estado === "Activo" ? "Desactivar" : "Activar"}
-
-                        >
-
-                                                      <Trash2 className="w-4 h-4" />
-
-                          </button>}
-
-                      </>
-
-                    )}
-
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button type="button" onClick={() => handleVerDetalle(ut)} title="Ver detalles" aria-label={`Ver detalles de ${ut.nombre}`} className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg"><Eye className="w-4 h-4" /></button>
+                    {puedeEditar && <button type="button" onClick={() => handleAbrirEdicion(ut)} title="Editar" aria-label={`Editar ${ut.nombre}`} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg"><Edit2 className="w-4 h-4" /></button>}
+                    {puedeEditar && esAdmin && <button type="button" onClick={() => desactivarUtil(ut.id)} title={ut.estado === "Activo" ? "Desactivar" : "Activar"} aria-label={`${ut.estado === "Activo" ? "Desactivar" : "Activar"} ${ut.nombre}`} className="p-1.5 text-slate-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>}
                   </div>
-
                 </div>
-
-              </div>
-
+              </article>
             );
-
           })
-
         ) : (
-
-          <div className="bg-white p-8 rounded-3xl border border-slate-150 text-center text-slate-400 font-bold col-span-full">
-
+          <div className="col-span-full bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-500 font-semibold">
             No se encontraron útiles escolares en el catálogo con los filtros aplicados.
-
           </div>
-
         )}
-
       </div>
-
 
 
       {/* Modal: Registrar / Editar Útil */}
@@ -649,29 +527,28 @@ export default function ViewUtiles() {
 
             <form onSubmit={handleGuardar} className="p-6 space-y-4 text-xs font-semibold">
 
-              <div>
-
-                <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Descripción del Útil</label>
-
-                <input
-
-                  type="text"
-
-                  required
-
-                  value={formNombre}
-
-                  onChange={(e) => setFormNombre(e.target.value)}
-
-                  placeholder="Ej. Lapicero Trilux color Azul (Faber-Castell)"
-
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white"
-
-                />
-
+              <div className="grid grid-cols-[96px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,1fr)] gap-3 items-end">
+                <div className="relative group">
+                  <label title="Subir o cambiar fotografía" className="relative flex h-[72px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-emerald-300 bg-emerald-50 text-blue-700 hover:bg-emerald-100 focus-within:ring-2 focus-within:ring-emerald-400">
+                    {(imagenPrevia || formImagen)
+                      ? <img src={imagenPrevia || formImagen || ''} alt="Foto del útil" className="w-full h-full object-contain p-1" />
+                      : <Camera className="w-7 h-7" />}
+                    <span className="absolute bottom-0 inset-x-0 bg-emerald-800/90 text-center text-[9px] text-white py-0.5">{(imagenPrevia || formImagen) ? 'Cambiar foto' : 'Subir foto'}</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" onChange={seleccionarImagen} className="sr-only" aria-label="Seleccionar fotografía del útil" />
+                  </label>
+                  {(imagenPrevia || formImagen) && <button type="button" title="Quitar fotografía" aria-label="Quitar fotografía" onClick={quitarImagen} className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-rose-600 border border-rose-200 shadow"><X className="w-3.5 h-3.5" /></button>}
+                </div>
+                <div className="min-w-0">
+                  <label htmlFor="nombre-util" className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Descripción del Útil</label>
+                  <input
+                    id="nombre-util" type="text" required value={formNombre}
+                    onChange={(e) => setFormNombre(e.target.value)}
+                    placeholder="Ej. Regla de 30 cm"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  />
+                </div>
               </div>
-
-
+              <p className="text-[10px] font-normal text-slate-500">Fotografía opcional: JPG, PNG o WEBP (máximo 2 MB). Pulsa la imagen para cambiarla.</p>
 
               <div className="grid grid-cols-2 gap-4">
 
@@ -727,30 +604,7 @@ export default function ViewUtiles() {
 
 
 
-              <div className="grid grid-cols-2 gap-4">
-
-                <div>
-
-                  <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Stock Inicial Disponible</label>
-
-                  <input
-
-                    type="number"
-
-                    required
-
-                    min={0}
-
-                    value={esAdmin ? formStockActual : esEdicion ? (utilSeleccionado?.stockActual ?? 0) : 0}
-                    disabled={!esAdmin}
-                    onChange={(e) => setFormStockActual(Number(e.target.value))}
-
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-emerald-500 focus:bg-white"
-
-                  />
-
-                </div>
-
+              <div>
                 <div>
 
                   <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Stock Mínimo Alerta</label>
@@ -801,6 +655,18 @@ export default function ViewUtiles() {
 
 
 
+              {errorGuardado && <p role="alert" className="text-red-600 text-xs">{errorGuardado}</p>}
+              {ofrecerGuardarSinFoto && archivoImagen && (
+                <button
+                  type="button"
+                  disabled={guardandoUtil}
+                  onClick={(e) => void handleGuardar(e, true)}
+                  className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-left text-amber-900 hover:bg-amber-100"
+                >
+                  Guardar los demás cambios sin subir esta foto
+                </button>
+              )}
+
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
 
                 <button
@@ -827,7 +693,7 @@ export default function ViewUtiles() {
 
                   <Check className="w-4.5 h-4.5" />
 
-                  {esEdicion ? "Guardar Cambios" : "Completar Registro"}
+                  {guardandoUtil ? "Guardando..." : esEdicion ? "Guardar Cambios" : "Completar Registro"}
 
                 </button>
 
@@ -921,28 +787,11 @@ export default function ViewUtiles() {
 
 
 
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-
-                <div>
-
-                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Stock Físico Actual</span>
-
-                  <span className="text-sm font-black text-slate-800 block mt-0.5">{utilSeleccionado.stockActual}</span>
-
-                </div>
-
-                <div>
-
-                  <span className="text-[9px] text-slate-400 uppercase tracking-wide block font-bold">Límite Mínimo</span>
-
-                  <span className="text-sm font-black text-slate-800 block mt-0.5">{utilSeleccionado.stockMinimo}</span>
-
-                </div>
-
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wide block font-bold">Mínimo para alertas</span>
+                <span className="text-sm font-black text-slate-800 block mt-1">{utilSeleccionado.stockMinimo} {utilSeleccionado.unidadMedida}(s)</span>
               </div>
-
-
-
+              {utilSeleccionado.imagen_url && <img src={utilSeleccionado.imagen_url} alt={`Foto de ${utilSeleccionado.nombre}`} className="h-32 w-full object-contain rounded-xl border border-slate-100" />}
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
 
                 <div>
