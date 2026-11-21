@@ -187,7 +187,7 @@ export default function App() {
       return;
     }
     localStorage.removeItem(ACTIVIDAD_KEY);
-    for (const nombreRol of ["Administrador", "Secretaria", "Profesora", "Auxiliar"]) {
+    for (const nombreRol of ["Administrador", "Directora", "Secretaria", "Profesora", "Auxiliar"]) {
       localStorage.removeItem(`sigue:vista:${nombreRol}`);
     }
     sessionStorage.removeItem("sigue:demo:vista");
