@@ -3,7 +3,7 @@ import { useSupabaseClerk } from "../lib/useSupabaseClerk";
 import { supabase as supabaseAuth } from "../lib/supabaseClient";
 
 import { useApp } from "../context/AppContext";
-import { useRolInstitucional } from "../lib/useRolInstitucional";
+import SelectorUnidadMedida from "./SelectorUnidadMedida";
 
 import { UtilEscolar } from "../types";
 
@@ -59,7 +59,8 @@ export default function ViewUtiles() {
 
     desactivarUtil,
 
-    usuarioActivo
+    usuarioActivo,
+    rolSesion: rol
 
   } = useApp();
 
@@ -91,6 +92,7 @@ export default function ViewUtiles() {
 
   const [formStockMinimo, setFormStockMinimo] = useState(10);
   const [guardandoUtil, setGuardandoUtil] = useState(false);
+  const [guardandoUnidad, setGuardandoUnidad] = useState(false);
   const [ofrecerGuardarSinFoto, setOfrecerGuardarSinFoto] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState("");
 
@@ -146,8 +148,8 @@ export default function ViewUtiles() {
 
 
 
-  const { rol } = useRolInstitucional();
-  const puedeGestionar = ["Administrador", "Secretaria", "Profesora"].includes(rol ?? "");
+  const puedeCrearUnidad = rol === "Administrador" || rol === "Directora" || rol === "Secretaria";
+  const puedeGestionar = puedeCrearUnidad || rol === "Profesora";
   const esAdmin = rol === "Administrador";
   const puedeEditar = puedeGestionar;
 
@@ -156,7 +158,6 @@ export default function ViewUtiles() {
 
   const categorias = ["Escritura", "Papelería", "Arte y Pintura", "Pegamentos", "Juegos Lúdicos", "Psicomotricidad", "Otros"];
 
-  const unidades = ["Unidad", "Caja", "Paquete", "Docena", "Millar"];
 
 
 
@@ -228,7 +229,7 @@ export default function ViewUtiles() {
 
   const handleGuardar = async (e: React.SyntheticEvent, omitirFoto = false) => {
     e.preventDefault();
-    if (!puedeGestionar || guardandoUtil || !formNombre.trim()) return;
+    if (!puedeGestionar || guardandoUtil || guardandoUnidad || !formNombre.trim()) return;
     if (!Number.isSafeInteger(formStockMinimo) || formStockMinimo < 0) {
       setErrorGuardado("El stock mínimo debe ser un número entero mayor o igual a cero.");
       return;
@@ -516,6 +517,7 @@ export default function ViewUtiles() {
               <button
 
                 onClick={() => setMostrarModalRegistro(false)}
+                disabled={guardandoUnidad}
 
                 className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-lg border border-slate-200"
 
@@ -580,29 +582,14 @@ export default function ViewUtiles() {
 
                 </div>
 
-                <div>
-
-                  <label className="block text-slate-500 mb-1.5 uppercase tracking-wide font-bold">Unidad de Medida</label>
-
-                  <select
-
-                    value={formUnidadMedida}
-
-                    onChange={(e) => setFormUnidadMedida(e.target.value)}
-
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-emerald-500 focus:bg-white"
-
-                  >
-
-                    {unidades.map(un => (
-
-                      <option key={un} value={un}>{un}</option>
-
-                    ))}
-
-                  </select>
-
-                </div>
+                <SelectorUnidadMedida
+                  supabase={supabaseImagenes}
+                  value={formUnidadMedida}
+                  onChange={setFormUnidadMedida}
+                  canCreate={puedeCrearUnidad}
+                  disabled={guardandoUtil}
+                  onGuardandoChange={setGuardandoUnidad}
+                />
 
               </div>
 
@@ -663,7 +650,7 @@ export default function ViewUtiles() {
               {ofrecerGuardarSinFoto && archivoImagen && (
                 <button
                   type="button"
-                  disabled={guardandoUtil}
+                  disabled={guardandoUtil || guardandoUnidad}
                   onClick={(e) => void handleGuardar(e, true)}
                   className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-left text-amber-900 hover:bg-amber-100"
                 >
@@ -678,6 +665,7 @@ export default function ViewUtiles() {
                   type="button"
 
                   onClick={() => setMostrarModalRegistro(false)}
+                  disabled={guardandoUnidad}
 
                   className="px-4 py-2.5 border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-colors"
 
@@ -690,6 +678,7 @@ export default function ViewUtiles() {
                 <button
 
                   type="submit"
+                  disabled={guardandoUnidad}
 
                   className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2 font-bold"
 

@@ -1,6 +1,7 @@
 
 export type RolSIGUE =
   | "Administrador"
+  | "Directora"
   | "Secretaria"
   | "Profesora"
   | "Auxiliar";
@@ -22,6 +23,8 @@ export const ACCESOS: Record<RolSIGUE, readonly string[]> = {
     "mi_perfil", "verificar_correo"
   ],
 
+  Directora: ["inicio", "utiles", "mi_perfil", "verificar_correo"],
+
   Profesora: [
     "inicio", "listas", "recepcion",
     "reportes", "mi_perfil", "verificar_correo"
@@ -37,6 +40,7 @@ export function esRolSIGUE(
   rol: unknown
 ): rol is RolSIGUE {
   return rol === "Administrador"
+    || rol === "Directora"
     || rol === "Secretaria"
     || rol === "Profesora"
     || rol === "Auxiliar";
