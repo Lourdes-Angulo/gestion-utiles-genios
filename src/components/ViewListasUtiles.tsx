@@ -378,8 +378,9 @@ export default function ViewListasUtiles() {
 
   return (
 
-    <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#f0f4f8]">
+    <div className={`flex-1 p-8 bg-[#f0f4f8] ${mostrarModalCrear ? "overflow-hidden" : "overflow-y-auto"}`}>
 
+      <div inert={mostrarModalCrear} className="space-y-6">
 
 
       {mensajeExito && (
@@ -799,17 +800,19 @@ export default function ViewListasUtiles() {
 
 
 
+      </div>
+
       {/* Modal: Crear / Modificar Lista */}
 
       {mostrarModalCrear && (
 
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden overscroll-none bg-slate-900/40 p-2 backdrop-blur-xs sm:p-4">
 
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-150 max-w-2xl w-full animate-scale-up">
+          <form onSubmit={handleGuardar} role="dialog" aria-modal="true" aria-labelledby="titulo-modal-lista-utiles" className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-150 bg-white text-xs font-semibold shadow-2xl animate-scale-up">
 
-            <div className="p-6 bg-slate-50 border-b border-slate-150 flex items-center justify-between rounded-t-3xl">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-150 bg-slate-50 p-3 sm:p-6">
 
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <h3 id="titulo-modal-lista-utiles" className="font-bold text-slate-800 text-sm flex items-center gap-2">
 
                 <ClipboardList className="w-5 h-5 text-emerald-600" />
 
@@ -819,9 +822,11 @@ export default function ViewListasUtiles() {
 
               <button
 
+                type="button"
+                aria-label="Cerrar formulario de lista de útiles"
                 onClick={() => setMostrarModalCrear(false)}
 
-                className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-lg border border-slate-200"
+                className="shrink-0 text-slate-400 hover:text-slate-600 p-1 bg-white rounded-lg border border-slate-200"
 
               >
 
@@ -833,9 +838,9 @@ export default function ViewListasUtiles() {
 
 
 
-            <form onSubmit={handleGuardar} className="p-6 space-y-4 text-xs font-semibold">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain space-y-4 p-3 sm:p-6">
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
 
                 <div>
 
@@ -958,7 +963,7 @@ export default function ViewListasUtiles() {
 
               <div className="space-y-3.5">
 
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
 
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Útiles escolares requeridos</span>
 
@@ -986,9 +991,9 @@ export default function ViewListasUtiles() {
 
                   {itemsForm.map((item, idx) => (
 
-                    <div key={idx} className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                    <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-100 sm:gap-3">
 
-                      <div className="flex-1">
+                      <div className="min-w-0 flex-1">
 
                         <UtilCombobox
 
@@ -1002,7 +1007,7 @@ export default function ViewListasUtiles() {
 
                       </div>
 
-                      <div className="w-24">
+                      <div className="w-14 shrink-0 sm:w-24">
 
                         <input
 
@@ -1050,7 +1055,9 @@ export default function ViewListasUtiles() {
 
 
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+            </div>
+
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 p-3 sm:gap-3 sm:px-6 sm:pt-4 sm:pb-6">
 
                 <button
 
@@ -1082,9 +1089,7 @@ export default function ViewListasUtiles() {
 
               </div>
 
-            </form>
-
-          </div>
+          </form>
 
         </div>
 
